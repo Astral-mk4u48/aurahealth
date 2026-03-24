@@ -15,15 +15,25 @@ export default function Dashboard() {
 
   useEffect(() => {
     const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        router.push('/')
-      } else {
-        setUser(user)
-        await fetchTodayLogs(user.id)
-        setLoading(false)
-      }
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+            router.push('/')
+        } else {
+            const { data: profile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', user.id)
+            .single()
+            if (!profile) {
+                router.push('/onboarding')
+                return
+            }
+            setUser(user)
+            await fetchTodayLogs(user.id)
+            setLoading(false)
+        }
     }
+
     getUser()
   }, [router])
 
