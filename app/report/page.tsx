@@ -243,13 +243,10 @@ export default function WeeklyReport() {
               <div className="text-gray-600 text-xs text-right">myaurahealth.vercel.app</div>
             </div>
 
-            <button
-              onClick={downloadCard}
-              disabled={downloading}
-              className="w-full bg-gray-800 hover:bg-gray-700 text-white font-semibold py-4 rounded-2xl transition-all"
-            >
-              {downloading ? 'Downloading...' : '⬇️ Download Report Card'}
-            </button>
+            <div className="bg-gray-800 rounded-2xl p-4 text-center space-y-2">
+              <p className="text-gray-400 text-sm">📸 Take a screenshot of the card above to share your progress!</p>
+              <p className="text-gray-600 text-xs">Windows: Win + Shift + S &nbsp;|&nbsp; Mac: Cmd + Shift + 4</p>
+            </div>
           </>
         )}
 
