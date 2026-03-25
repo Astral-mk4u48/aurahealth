@@ -15,10 +15,11 @@ export default function Navbar() {
   if (!user || pathname === '/') return null
 
   const links = [
-    { href: '/dashboard', label: '🏠 Dashboard' },
-    { href: '/exercises', label: '💪 Exercises' },
-    { href: '/recipes', label: '🥗 Recipes' },
-  ]
+  { href: '/dashboard', label: '🏠 Dashboard' },
+  { href: '/exercises', label: '💪 Exercises' },
+  { href: '/recipes', label: '🥗 Recipes' },
+  { href: '/settings', label: '⚙️ Settings' },
+]
 
   return (
     <nav className="border-b border-gray-800 px-8 py-4">
