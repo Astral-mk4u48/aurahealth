@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
@@ -9,7 +9,9 @@ export default function WeeklyReport() {
   const [report, setReport] = useState('')
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [weekStats, setWeekStats] = useState<any[]>([])
+  const cardRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -41,7 +43,6 @@ export default function WeeklyReport() {
       .order('created_at', { ascending: true })
 
     if (data) {
-      const dailyCalories = profile?.goals?.daily_calories || 2000
       const days: any = {}
       data.forEach((log: any) => {
         const date = new Date(log.created_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
@@ -81,10 +82,25 @@ export default function WeeklyReport() {
     setGenerating(false)
   }
 
+  const downloadCard = async () => {
+    if (!cardRef.current) return
+    setDownloading(true)
+    const html2canvas = (await import('html2canvas')).default
+    const canvas = await html2canvas(cardRef.current, {
+      backgroundColor: '#000000',
+      scale: 2,
+    })
+    const link = document.createElement('a')
+    link.download = 'aurahealth-weekly-report.png'
+    link.href = canvas.toDataURL()
+    link.click()
+    setDownloading(false)
+  }
+
   const dailyCalories = profile?.goals?.daily_calories || 2000
   const maxCalories = Math.max(...weekStats.map(d => d.calories), 1)
-  const avgCalories = weekStats.length > 0 ? Math.round(weekStats.reduce((a, d) => a + d.calories, 0) / 7) : 0
-  const avgProtein = weekStats.length > 0 ? Math.round(weekStats.reduce((a, d) => a + d.protein, 0) / 7) : 0
+  const avgCalories = Math.round(weekStats.reduce((a, d) => a + d.calories, 0) / 7)
+  const avgProtein = Math.round(weekStats.reduce((a, d) => a + d.protein, 0) / 7)
   const daysLogged = weekStats.filter(d => d.logs > 0).length
   const bestDay = weekStats.length > 0 ? weekStats.reduce((best, d) => d.calories > best.calories ? d : best, weekStats[0]) : null
 
@@ -175,13 +191,66 @@ export default function WeeklyReport() {
         </div>
 
         {report && (
-          <div className="bg-gray-900 rounded-2xl p-6 space-y-3 border border-green-900">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-              <h2 className="text-xl font-semibold text-green-400">AI Weekly Analysis</h2>
+          <>
+            <div className="bg-gray-900 rounded-2xl p-6 space-y-3 border border-green-900">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <h2 className="text-xl font-semibold text-green-400">AI Weekly Analysis</h2>
+              </div>
+              <p className="text-gray-300 leading-relaxed whitespace-pre-line">{report}</p>
             </div>
-            <p className="text-gray-300 leading-relaxed whitespace-pre-line">{report}</p>
-          </div>
+
+            <div ref={cardRef} className="bg-black border border-green-900 rounded-2xl p-8 space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-emerald-600 bg-clip-text text-transparent">AuraHealth</h2>
+                  <p className="text-gray-400 text-sm">Weekly Report — {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                </div>
+                <div className="text-4xl">📊</div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-gray-900 rounded-xl p-4 text-center">
+                  <div className="text-2xl font-bold text-green-400">{daysLogged}/7</div>
+                  <div className="text-gray-400 text-xs">days logged</div>
+                </div>
+                <div className="bg-gray-900 rounded-xl p-4 text-center">
+                  <div className="text-2xl font-bold text-blue-400">{avgCalories}</div>
+                  <div className="text-gray-400 text-xs">avg kcal/day</div>
+                </div>
+                <div className="bg-gray-900 rounded-xl p-4 text-center">
+                  <div className="text-2xl font-bold text-purple-400">{avgProtein}g</div>
+                  <div className="text-gray-400 text-xs">avg protein/day</div>
+                </div>
+              </div>
+              <div className="flex items-end gap-1 h-16">
+                {weekStats.map((day, i) => {
+                  const height = day.calories > 0 ? Math.max((day.calories / maxCalories) * 100, 8) : 4
+                  const isOnTarget = day.calories >= dailyCalories * 0.85 && day.calories <= dailyCalories * 1.15
+                  const isOver = day.calories > dailyCalories * 1.15
+                  const isEmpty = day.calories === 0
+                  return (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                      <div
+                        className={`w-full rounded-t-sm ${isEmpty ? 'bg-gray-800' : isOver ? 'bg-red-500' : isOnTarget ? 'bg-green-500' : 'bg-yellow-500'}`}
+                        style={{ height: `${height * 0.6}px` }}
+                      />
+                      <div className="text-gray-600 text-xs">{day.date.split(',')[0].slice(0, 3)}</div>
+                    </div>
+                  )
+                })}
+              </div>
+              <p className="text-gray-400 text-sm leading-relaxed italic">{report.slice(0, 200)}...</p>
+              <div className="text-gray-600 text-xs text-right">myaurahealth.vercel.app</div>
+            </div>
+
+            <button
+              onClick={downloadCard}
+              disabled={downloading}
+              className="w-full bg-gray-800 hover:bg-gray-700 text-white font-semibold py-4 rounded-2xl transition-all"
+            >
+              {downloading ? 'Downloading...' : '⬇️ Download Report Card'}
+            </button>
+          </>
         )}
 
         <button
