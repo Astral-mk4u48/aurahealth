@@ -20,6 +20,7 @@ export default function Navbar() {
   { href: '/recipes', label: '🥗 Recipes' },
   { href: '/favorites', label: '⭐ Favorites' },
   { href: '/history', label: '📋 History' },
+  { href: '/weight', label: '⚖️ Weight' },
   { href: '/report', label: '📊 Report' },
   { href: '/settings', label: '⚙️ Settings' },
 ]
