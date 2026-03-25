@@ -14,8 +14,9 @@ export default function Navbar() {
 
   if (!user || pathname === '/') return null
 
-  const links = [
+const links = [
   { href: '/dashboard', label: '🏠 Dashboard' },
+  { href: '/search', label: '🔍 Search' },
   { href: '/exercises', label: '💪 Exercises' },
   { href: '/recipes', label: '🥗 Recipes' },
   { href: '/favorites', label: '⭐ Favorites' },
