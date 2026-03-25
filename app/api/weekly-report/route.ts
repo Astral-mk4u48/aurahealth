@@ -16,12 +16,7 @@ export async function POST(request: Request) {
 Here is their week:
 ${summary}
 
-Write a personal, encouraging weekly analysis in 4-5 sentences. Include:
-1. One specific micro-win they achieved
-2. One specific area to improve with a concrete actionable tip
-3. An encouraging closing line about their goal
-
-Be specific, use their actual numbers, and sound like a knowledgeable friend not a robot.`
+Write a personal, encouraging weekly analysis in 4-5 sentences. Include one specific micro-win, one area to improve with a concrete tip, and an encouraging closing line. Be specific and sound like a knowledgeable friend.`
           }]
         }]
       })
@@ -29,6 +24,12 @@ Be specific, use their actual numbers, and sound like a knowledgeable friend not
   )
 
   const data = await response.json()
+
+  if (!data.candidates || !data.candidates[0]) {
+    console.log('Gemini error:', JSON.stringify(data))
+    return NextResponse.json({ report: 'Could not generate report. Please try again.' })
+  }
+
   const report = data.candidates[0].content.parts[0].text.trim()
   return NextResponse.json({ report })
 }
