@@ -9,6 +9,9 @@ export default function RecipeDetail() {
   const [saved, setSaved] = useState(false)
   const [user, setUser] = useState<any>(null)
   const [servings, setServings] = useState(1)
+  const [swapIngredient, setSwapIngredient] = useState('')
+  const [swapResult, setSwapResult] = useState('')
+  const [swapping, setSwapping] = useState(false)
   const router = useRouter()
   const params = useParams()
 
@@ -59,6 +62,23 @@ export default function RecipeDetail() {
     alert('Meal logged!')
   }
 
+  const getSwap = async () => {
+    if (!swapIngredient.trim()) return
+    setSwapping(true)
+    const res = await fetch('/api/ingredient-swap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recipe: recipe.title,
+        ingredient: swapIngredient,
+        macros: recipe.data_points,
+      })
+    })
+    const data = await res.json()
+    setSwapResult(data.swap)
+    setSwapping(false)
+  }
+
   if (loading) return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center">
       <div className="text-2xl text-green-400">Loading...</div>
@@ -75,7 +95,7 @@ export default function RecipeDetail() {
     <main className="min-h-screen bg-black text-white p-8">
       <div className="max-w-4xl mx-auto space-y-8">
         <button onClick={() => router.back()} className="text-gray-400 hover:text-white flex items-center gap-2">
-          ← Back
+          Back
         </button>
 
         <div className="space-y-2">
@@ -118,7 +138,7 @@ export default function RecipeDetail() {
               <button onClick={() => setServings(servings + 1)} className="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center hover:bg-gray-600">+</button>
             </div>
           </div>
-          <p className="text-gray-400 text-sm">Adjust servings to automatically scale the nutrition info above</p>
+          <p className="text-gray-400 text-sm">Adjust servings to automatically scale nutrition info above</p>
         </div>
 
         <div className="bg-gray-900 rounded-2xl p-6 space-y-4">
@@ -128,12 +148,41 @@ export default function RecipeDetail() {
           </div>
         </div>
 
-        <div className="bg-gray-900 rounded-2xl p-6 space-y-3">
+        <div className="bg-gray-900 rounded-2xl p-6 space-y-4">
           <h2 className="text-2xl font-bold">Details</h2>
           <div className="flex items-center gap-2 text-gray-300">
-            <span>⏱</span>
             <span>Prep time: {recipe.data_points?.prep_time}</span>
           </div>
+        </div>
+
+        <div className="bg-gray-900 rounded-2xl p-6 space-y-4 border border-yellow-900">
+          <div className="flex items-center gap-2">
+            <span className="text-yellow-400 font-semibold">🔄 AI Ingredient Swap</span>
+          </div>
+          <p className="text-gray-400 text-sm">Missing an ingredient? Tell us what you don't have and we'll suggest a substitute that maintains the macro profile.</p>
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={swapIngredient}
+              onChange={e => setSwapIngredient(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && getSwap()}
+              placeholder="e.g. I don't have greek yogurt..."
+              className="flex-1 bg-gray-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-yellow-500 placeholder-gray-500"
+            />
+            <button
+              onClick={getSwap}
+              disabled={swapping}
+              className="bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-700 text-black font-semibold px-6 py-3 rounded-xl transition-all"
+            >
+              {swapping ? '...' : 'Swap'}
+            </button>
+          </div>
+          {swapResult && (
+            <div className="bg-gray-800 rounded-xl p-4 border border-yellow-800">
+              <p className="text-yellow-400 font-semibold mb-2">AI Suggestion:</p>
+              <p className="text-gray-300 leading-relaxed">{swapResult}</p>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-4">
@@ -148,7 +197,7 @@ export default function RecipeDetail() {
             disabled={saved}
             className="flex-1 bg-gray-800 hover:bg-gray-700 disabled:bg-gray-600 text-white font-semibold py-4 rounded-xl transition-all"
           >
-            {saved ? '✓ Saved!' : '♡ Save Recipe'}
+            {saved ? 'Saved!' : 'Save Recipe'}
           </button>
         </div>
       </div>
