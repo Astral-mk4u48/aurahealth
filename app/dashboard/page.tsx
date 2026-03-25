@@ -3,37 +3,65 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
+const placeholders = [
+  "I had 2 scrambled eggs and sourdough toast...",
+  "Just finished a protein shake with banana...",
+  "Ate a chicken rice bowl for lunch...",
+  "Had a greek yogurt with berries...",
+  "Drank 500ml of water...",
+  "Just had a big mac and fries...",
+  "Had oatmeal with honey for breakfast...",
+]
+
+function SkeletonBox({ className }: { className?: string }) {
+  return (
+    <div className={`animate-pulse bg-gray-800 rounded-2xl ${className}`} />
+  )
+}
+
 export default function Dashboard() {
   const [user, setUser] = useState<any>(null)
+  const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [todayStats, setTodayStats] = useState({ calories: 0, protein: 0, water_ml: 0 })
   const [logs, setLogs] = useState<any[]>([])
   const [confirmation, setConfirmation] = useState<any>(null)
+  const [placeholderIndex, setPlaceholderIndex] = useState(0)
   const router = useRouter()
+
+  const hour = new Date().getHours()
+  const isMorning = hour < 12
+  const isEvening = hour >= 17
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPlaceholderIndex(i => (i + 1) % placeholders.length)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         router.push('/')
-      } else {
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', user.id)
-          .single()
-        console.log('Profile check:', profile, 'Error:', error)
-        if (!profile) {
-          console.log('No profile, going to onboarding')
-          router.push('/onboarding')
-          return
-        }
-        setUser(user)
-        await fetchTodayLogs(user.id)
-        setLoading(false)
+        return
       }
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+      if (!profile) {
+        router.push('/onboarding')
+        return
+      }
+      setUser(user)
+      setProfile(profile)
+      await fetchTodayLogs(user.id)
+      setLoading(false)
     }
     getUser()
   }, [router])
@@ -78,6 +106,27 @@ export default function Dashboard() {
 
   const confirmLog = async () => {
     if (!confirmation || !user) return
+    const newLog = {
+      id: Math.random().toString(),
+      display_name: confirmation.name,
+      entry_type: confirmation.water_ml > 0 ? 'water' : 'food',
+      macros: {
+        calories: confirmation.calories,
+        protein: confirmation.protein,
+        carbs: confirmation.carbs,
+        fat: confirmation.fat,
+        water_ml: confirmation.water_ml,
+      }
+    }
+    setLogs(prev => [newLog, ...prev])
+    setTodayStats(prev => ({
+      calories: prev.calories + confirmation.calories,
+      protein: prev.protein + confirmation.protein,
+      water_ml: prev.water_ml + confirmation.water_ml,
+    }))
+    setConfirmation(null)
+    setMessage('')
+
     await supabase.from('logs_intake').insert({
       user_id: user.id,
       entry_type: confirmation.water_ml > 0 ? 'water' : 'food',
@@ -93,15 +142,43 @@ export default function Dashboard() {
       },
       is_ai_generated: true,
     })
-    setConfirmation(null)
-    setMessage('')
-    await fetchTodayLogs(user.id)
+  }
+
+  const dailyCalories = profile?.goals?.daily_calories || 2000
+  const proteinTarget = profile?.goals?.protein_target || 150
+  const waterTarget = profile?.goals?.water_target_ml || 2500
+
+  const getGreeting = () => {
+    const name = user?.user_metadata?.full_name?.split(' ')[0]
+    if (isMorning) return `Good morning, ${name} ☀️`
+    if (isEvening) return `Good evening, ${name} 🌙`
+    return `Welcome back, ${name} 👋`
+  }
+
+  const getAICoachMessage = () => {
+    const name = user?.user_metadata?.full_name?.split(' ')[0]
+    const remaining = dailyCalories - todayStats.calories
+    if (todayStats.calories === 0 && isMorning) return `Good morning ${name}! Start your day strong — log your breakfast and I will track your progress. 💪`
+    if (todayStats.calories === 0 && isEvening) return `Hey ${name}, you haven't logged anything today. It's not too late — log your meals and get back on track!`
+    if (todayStats.calories === 0) return `Hey ${name}! Start logging your meals and I will give you personalized insights.`
+    if (remaining > 0) return `You have ${remaining} kcal remaining today. You've hit ${todayStats.protein}g protein so far — keep it up! 💪`
+    if (remaining <= 0) return `You've hit your calorie goal for today! Great discipline ${name}. Focus on hitting your ${proteinTarget}g protein target. 🎯`
+    return `Great work! You have hit ${todayStats.calories} calories and ${todayStats.protein}g protein today.`
   }
 
   if (loading) return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center">
-      <div className="text-2xl text-green-400">Loading...</div>
-    </div>
+    <main className="min-h-screen bg-black text-white p-8">
+      <div className="max-w-6xl mx-auto space-y-8">
+        <SkeletonBox className="h-16 w-64" />
+        <div className="grid grid-cols-3 gap-4">
+          <SkeletonBox className="h-36" />
+          <SkeletonBox className="h-36" />
+          <SkeletonBox className="h-36" />
+        </div>
+        <SkeletonBox className="h-24" />
+        <SkeletonBox className="h-20" />
+      </div>
+    </main>
   )
 
   return (
@@ -112,7 +189,7 @@ export default function Dashboard() {
             <h1 className="text-4xl font-bold bg-gradient-to-r from-green-400 to-emerald-600 bg-clip-text text-transparent">
               AuraHealth
             </h1>
-            <p className="text-gray-400 mt-1">Welcome back, {user?.user_metadata?.full_name?.split(' ')[0]}</p>
+            <p className="text-gray-400 mt-1">{getGreeting()}</p>
           </div>
           <button
             onClick={() => supabase.auth.signOut().then(() => router.push('/'))}
@@ -122,29 +199,49 @@ export default function Dashboard() {
           </button>
         </div>
 
+        {isEvening && todayStats.calories > 0 && (
+          <div className="bg-gray-900 rounded-2xl p-4 border border-gray-700">
+            <p className="text-gray-400 text-sm font-semibold uppercase tracking-wide mb-3">Evening Summary</p>
+            <div className="grid grid-cols-3 gap-4 text-center text-sm">
+              <div>
+                <div className="text-green-400 font-bold text-lg">{todayStats.calories}</div>
+                <div className="text-gray-500">calories eaten</div>
+              </div>
+              <div>
+                <div className="text-blue-400 font-bold text-lg">{todayStats.protein}g</div>
+                <div className="text-gray-500">protein</div>
+              </div>
+              <div>
+                <div className="text-green-400 font-bold text-lg">{Math.max(0, dailyCalories - todayStats.calories)}</div>
+                <div className="text-gray-500">kcal remaining</div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-4">
           <div className="bg-gray-900 rounded-2xl p-6 text-center space-y-2">
             <div className="text-4xl font-bold text-green-400">{todayStats.calories}</div>
-            <div className="text-gray-400">/ 2000 kcal</div>
+            <div className="text-gray-400">/ {dailyCalories} kcal</div>
             <div className="text-white font-semibold">Calories</div>
             <div className="w-full bg-gray-800 rounded-full h-2">
-              <div className="bg-green-400 h-2 rounded-full transition-all" style={{ width: `${Math.min((todayStats.calories / 2000) * 100, 100)}%` }}></div>
+              <div className="bg-green-400 h-2 rounded-full transition-all duration-500" style={{ width: `${Math.min((todayStats.calories / dailyCalories) * 100, 100)}%` }}></div>
             </div>
           </div>
           <div className="bg-gray-900 rounded-2xl p-6 text-center space-y-2">
             <div className="text-4xl font-bold text-blue-400">{todayStats.protein}g</div>
-            <div className="text-gray-400">/ 150g protein</div>
+            <div className="text-gray-400">/ {proteinTarget}g protein</div>
             <div className="text-white font-semibold">Protein</div>
             <div className="w-full bg-gray-800 rounded-full h-2">
-              <div className="bg-blue-400 h-2 rounded-full transition-all" style={{ width: `${Math.min((todayStats.protein / 150) * 100, 100)}%` }}></div>
+              <div className="bg-blue-400 h-2 rounded-full transition-all duration-500" style={{ width: `${Math.min((todayStats.protein / proteinTarget) * 100, 100)}%` }}></div>
             </div>
           </div>
           <div className="bg-gray-900 rounded-2xl p-6 text-center space-y-2">
             <div className="text-4xl font-bold text-cyan-400">{todayStats.water_ml}ml</div>
-            <div className="text-gray-400">/ 2500ml water</div>
+            <div className="text-gray-400">/ {waterTarget}ml water</div>
             <div className="text-white font-semibold">Water</div>
             <div className="w-full bg-gray-800 rounded-full h-2">
-              <div className="bg-cyan-400 h-2 rounded-full transition-all" style={{ width: `${Math.min((todayStats.water_ml / 2500) * 100, 100)}%` }}></div>
+              <div className="bg-cyan-400 h-2 rounded-full transition-all duration-500" style={{ width: `${Math.min((todayStats.water_ml / waterTarget) * 100, 100)}%` }}></div>
             </div>
           </div>
         </div>
@@ -154,31 +251,32 @@ export default function Dashboard() {
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
             <span className="text-green-400 font-semibold text-sm">AI Coach</span>
           </div>
-          <p className="text-gray-300">
-            {todayStats.calories === 0
-              ? `Hey ${user?.user_metadata?.full_name?.split(' ')[0]}! Start logging your meals and I will give you personalized insights.`
-              : `Great work! You have hit ${todayStats.calories} calories and ${todayStats.protein}g protein today. Keep it up!`
-            }
-          </p>
+          <p className="text-gray-300">{getAICoachMessage()}</p>
         </div>
 
         <div className="bg-gray-900 rounded-2xl p-6 space-y-4">
-          <h2 className="text-xl font-semibold">Quick Log</h2>
+          <h2 className="text-xl font-semibold">
+            {isMorning ? '🌅 Log your breakfast' : isEvening ? '🌙 Log your dinner' : '☀️ Quick Log'}
+          </h2>
           <div className="flex gap-3">
             <input
               type="text"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleLog()}
-              placeholder="I had 2 eggs and toast for breakfast..."
-              className="flex-1 bg-gray-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 placeholder-gray-500"
+              placeholder={placeholders[placeholderIndex]}
+              className="flex-1 bg-gray-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 placeholder-gray-600 transition-all"
             />
             <button
               onClick={handleLog}
               disabled={aiLoading}
               className="bg-green-500 hover:bg-green-600 disabled:bg-gray-600 text-black font-semibold px-6 py-3 rounded-xl transition-all"
             >
-              {aiLoading ? '...' : 'Log'}
+              {aiLoading ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></span>
+                </span>
+              ) : 'Log'}
             </button>
           </div>
 
