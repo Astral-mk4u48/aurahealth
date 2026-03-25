@@ -18,6 +18,7 @@ export default function Navbar() {
   { href: '/dashboard', label: '🏠 Dashboard' },
   { href: '/exercises', label: '💪 Exercises' },
   { href: '/recipes', label: '🥗 Recipes' },
+  { href: '/report', label: '📊 Report' },
   { href: '/settings', label: '⚙️ Settings' },
 ]
 
