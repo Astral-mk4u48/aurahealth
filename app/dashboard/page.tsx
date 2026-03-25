@@ -14,9 +14,7 @@ const placeholders = [
 ]
 
 function SkeletonBox({ className }: { className?: string }) {
-  return (
-    <div className={`animate-pulse bg-gray-800 rounded-2xl ${className}`} />
-  )
+  return <div className={`animate-pulse bg-gray-800 rounded-2xl ${className}`} />
 }
 
 export default function Dashboard() {
@@ -45,19 +43,13 @@ export default function Dashboard() {
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        router.push('/')
-        return
-      }
+      if (!user) { router.push('/'); return }
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single()
-      if (!profile) {
-        router.push('/onboarding')
-        return
-      }
+      if (!profile) { router.push('/onboarding'); return }
       setUser(user)
       setProfile(profile)
       await fetchTodayLogs(user.id)
@@ -75,7 +67,6 @@ export default function Dashboard() {
       .eq('user_id', userId)
       .gte('created_at', today.toISOString())
       .order('created_at', { ascending: false })
-
     if (data) {
       setLogs(data)
       const stats = data.reduce((acc: any, log: any) => ({
@@ -85,6 +76,26 @@ export default function Dashboard() {
       }), { calories: 0, protein: 0, water_ml: 0 })
       setTodayStats(stats)
     }
+  }
+
+  const logWater = async (ml: number) => {
+    const waterLog = {
+      id: Math.random().toString(),
+      display_name: `Water ${ml}ml`,
+      entry_type: 'water',
+      macros: { calories: 0, protein: 0, carbs: 0, fat: 0, water_ml: ml }
+    }
+    setLogs(prev => [waterLog, ...prev])
+    setTodayStats(prev => ({ ...prev, water_ml: prev.water_ml + ml }))
+    await supabase.from('logs_intake').insert({
+      user_id: user.id,
+      entry_type: 'water',
+      display_name: `Water ${ml}ml`,
+      amount: ml,
+      unit: 'ml',
+      macros: { calories: 0, protein: 0, carbs: 0, fat: 0, water_ml: ml },
+      is_ai_generated: false,
+    })
   }
 
   const handleLog = async () => {
@@ -126,7 +137,6 @@ export default function Dashboard() {
     }))
     setConfirmation(null)
     setMessage('')
-
     await supabase.from('logs_intake').insert({
       user_id: user.id,
       entry_type: confirmation.water_ml > 0 ? 'water' : 'food',
@@ -159,11 +169,10 @@ export default function Dashboard() {
     const name = user?.user_metadata?.full_name?.split(' ')[0]
     const remaining = dailyCalories - todayStats.calories
     if (todayStats.calories === 0 && isMorning) return `Good morning ${name}! Start your day strong — log your breakfast and I will track your progress. 💪`
-    if (todayStats.calories === 0 && isEvening) return `Hey ${name}, you haven't logged anything today. It's not too late — log your meals and get back on track!`
+    if (todayStats.calories === 0 && isEvening) return `Hey ${name}, you have not logged anything today. It is not too late — log your meals and get back on track!`
     if (todayStats.calories === 0) return `Hey ${name}! Start logging your meals and I will give you personalized insights.`
-    if (remaining > 0) return `You have ${remaining} kcal remaining today. You've hit ${todayStats.protein}g protein so far — keep it up! 💪`
-    if (remaining <= 0) return `You've hit your calorie goal for today! Great discipline ${name}. Focus on hitting your ${proteinTarget}g protein target. 🎯`
-    return `Great work! You have hit ${todayStats.calories} calories and ${todayStats.protein}g protein today.`
+    if (remaining > 0) return `You have ${remaining} kcal remaining today. You have hit ${todayStats.protein}g protein so far — keep it up! 💪`
+    return `You have hit your calorie goal for today! Great discipline ${name}. Focus on hitting your ${proteinTarget}g protein target. 🎯`
   }
 
   if (loading) return (
@@ -176,7 +185,7 @@ export default function Dashboard() {
           <SkeletonBox className="h-36" />
         </div>
         <SkeletonBox className="h-24" />
-        <SkeletonBox className="h-20" />
+        <SkeletonBox className="h-32" />
       </div>
     </main>
   )
@@ -258,6 +267,17 @@ export default function Dashboard() {
           <h2 className="text-xl font-semibold">
             {isMorning ? '🌅 Log your breakfast' : isEvening ? '🌙 Log your dinner' : '☀️ Quick Log'}
           </h2>
+          <div className="flex gap-2 flex-wrap">
+            {[250, 500, 750, 1000].map(ml => (
+              <button
+                key={ml}
+                onClick={() => logWater(ml)}
+                className="bg-cyan-900 hover:bg-cyan-800 text-cyan-400 font-semibold px-4 py-2 rounded-xl text-sm transition-all"
+              >
+                💧 {ml}ml
+              </button>
+            ))}
+          </div>
           <div className="flex gap-3">
             <input
               type="text"
@@ -273,9 +293,7 @@ export default function Dashboard() {
               className="bg-green-500 hover:bg-green-600 disabled:bg-gray-600 text-black font-semibold px-6 py-3 rounded-xl transition-all"
             >
               {aiLoading ? (
-                <span className="flex items-center gap-2">
-                  <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></span>
-                </span>
+                <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin block"></span>
               ) : 'Log'}
             </button>
           </div>
@@ -320,9 +338,11 @@ export default function Dashboard() {
               <div key={log.id} className="flex items-center justify-between bg-gray-800 rounded-xl px-4 py-3">
                 <div>
                   <div className="font-semibold">{log.display_name}</div>
-                  <div className="text-gray-400 text-sm">{log.entry_type}</div>
+                  <div className="text-gray-400 text-sm capitalize">{log.entry_type}</div>
                 </div>
-                <div className="text-green-400 font-bold">{log.macros?.calories} kcal</div>
+                <div className="text-green-400 font-bold">
+                  {log.entry_type === 'water' ? `${log.macros?.water_ml}ml` : `${log.macros?.calories} kcal`}
+                </div>
               </div>
             ))}
           </div>
