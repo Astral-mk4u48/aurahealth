@@ -40,7 +40,7 @@ const links = [
               className={`text-sm font-medium transition-colors ${
                 pathname === link.href
                   ? 'text-green-400'
-                  : 'text-gray-400 hover:text-red'
+                  : 'text-gray-400 hover:text-white'
               }`}
             >
               {link.label}
