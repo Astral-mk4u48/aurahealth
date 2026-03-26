@@ -28,7 +28,7 @@ const links = [
 
   return (
     <nav className="border-b border-gray-800 px-8 py-4">
-      <div className="max-w-6xl mx-auto flex items-center justify-between">
+      <div className="max-w-6xl mx-auto flex items-center justify-between " >
         <Link href="/dashboard" className="text-xl font-bold bg-gradient-to-r from-green-400 to-emerald-600 bg-clip-text text-transparent">
           AuraHealth
         </Link>
@@ -39,9 +39,9 @@ const links = [
               href={link.href}
               className={`text-sm font-medium transition-colors ${
                 pathname === link.href
-                  ? 'text-green-400'
-                  : 'text-gray-400 hover:text-white'
-              }`}
+                  ? 'text-black dark:text-white'
+                  : 'text-gray-600 hover:text-black dark:text-gray-400 dark:hover:text-white'
+                }`}
             >
               {link.label}
             </Link>
