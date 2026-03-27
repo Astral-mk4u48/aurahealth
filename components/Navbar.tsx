@@ -57,12 +57,14 @@ export default function Navbar() {
   if (!user || hiddenPaths.includes(pathname)) return null
 
   const links = [
-    { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
-    { href: '/library', label: 'Library', icon: '📚' },
-    { href: '/progress', label: 'Progress', icon: '📈' },
-    { href: '/ai', label: 'AI Coach', icon: '🤖' },
-    { href: '/profile', label: 'Profile', icon: '👤' },
-  ]
+  { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
+  { href: '/library', label: 'Library', icon: '📚' },
+  { href: '/progress', label: 'Progress', icon: '📈' },
+  { href: '/workouts', label: 'Workouts', icon: '🏋️' },
+  { href: '/ai', label: 'AI Coach', icon: '🤖' },
+  { href: '/profile', label: 'Profile', icon: '👤' },
+]
+
 
   return (
     <nav className="sticky top-0 z-50 bg-black/80 backdrop-blur-xl border-b border-white/10">
