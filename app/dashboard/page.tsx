@@ -27,6 +27,8 @@ export default function Dashboard() {
   const [logs, setLogs] = useState<any[]>([])
   const [confirmation, setConfirmation] = useState<any>(null)
   const [placeholderIndex, setPlaceholderIndex] = useState(0)
+  const [fitData, setFitData] = useState<any>(null)
+  const [fitConnected, setFitConnected] = useState(false)
   const router = useRouter()
 
   const hour = new Date().getHours()
@@ -43,7 +45,7 @@ export default function Dashboard() {
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/'); return }
+      if (!user) { router.push('/login'); return }
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
@@ -52,11 +54,29 @@ export default function Dashboard() {
       if (!profile) { router.push('/onboarding'); return }
       setUser(user)
       setProfile(profile)
+      if (profile?.google_fit_access_token) {
+        fetchFitData(profile.google_fit_access_token)
+      }
       await fetchTodayLogs(user.id)
       setLoading(false)
     }
     getUser()
   }, [router])
+
+  const fetchFitData = async (accessToken: string) => {
+    try {
+      const res = await fetch('/api/google-fit/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken })
+      })
+      const data = await res.json()
+      setFitData(data)
+      setFitConnected(true)
+    } catch {
+      console.log('Google Fit not connected')
+    }
+  }
 
   const fetchTodayLogs = async (userId: string) => {
     const today = new Date()
@@ -159,14 +179,14 @@ export default function Dashboard() {
   const waterTarget = profile?.goals?.water_target_ml || 2500
 
   const getGreeting = () => {
-    const name = user?.user_metadata?.full_name?.split(' ')[0]
+    const name = user?.user_metadata?.full_name?.split(' ')[0] || profile?.username
     if (isMorning) return `Good morning, ${name} ☀️`
     if (isEvening) return `Good evening, ${name} 🌙`
     return `Welcome back, ${name} 👋`
   }
 
   const getAICoachMessage = () => {
-    const name = user?.user_metadata?.full_name?.split(' ')[0]
+    const name = user?.user_metadata?.full_name?.split(' ')[0] || profile?.username
     const remaining = dailyCalories - todayStats.calories
     if (todayStats.calories === 0 && isMorning) return `Good morning ${name}! Start your day strong — log your breakfast and I will track your progress. 💪`
     if (todayStats.calories === 0 && isEvening) return `Hey ${name}, you have not logged anything today. It is not too late — log your meals and get back on track!`
@@ -200,12 +220,6 @@ export default function Dashboard() {
             </h1>
             <p className="text-gray-400 mt-1">{getGreeting()}</p>
           </div>
-          <button
-            onClick={() => supabase.auth.signOut().then(() => router.push('/'))}
-            className="text-gray-400 hover:text-white text-sm border border-gray-700 px-4 py-2 rounded-lg"
-          >
-            Sign Out
-          </button>
         </div>
 
         {isEvening && todayStats.calories > 0 && (
@@ -254,6 +268,52 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {fitConnected && fitData ? (
+          <div className="bg-gray-900 rounded-2xl p-6 border border-blue-900">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">⌚</span>
+                <span className="text-blue-400 font-semibold">Google Fit Today</span>
+              </div>
+              <span className="text-xs text-gray-500">Live from your watch</span>
+            </div>
+            <div className="grid grid-cols-4 gap-3">
+              <div className="bg-gray-800 rounded-xl p-3 text-center">
+                <div className="text-2xl font-bold text-white">{fitData.steps.toLocaleString()}</div>
+                <div className="text-gray-400 text-xs">steps</div>
+              </div>
+              <div className="bg-gray-800 rounded-xl p-3 text-center">
+                <div className="text-2xl font-bold text-orange-400">{fitData.calories}</div>
+                <div className="text-gray-400 text-xs">kcal burned</div>
+              </div>
+              <div className="bg-gray-800 rounded-xl p-3 text-center">
+                <div className="text-2xl font-bold text-red-400">{fitData.heartRate || '-'}</div>
+                <div className="text-gray-400 text-xs">bpm peak</div>
+              </div>
+              <div className="bg-gray-800 rounded-xl p-3 text-center">
+                <div className="text-2xl font-bold text-green-400">{fitData.distance}</div>
+                <div className="text-gray-400 text-xs">km</div>
+              </div>
+            </div>
+          </div>
+        ) : (
+  <div className="bg-gray-900 rounded-2xl p-5 border border-gray-800 flex items-center justify-between">
+    <div className="flex items-center gap-3">
+      <span className="text-2xl">⌚</span>
+      <div>
+        <div className="font-semibold">Connect Google Fit</div>
+        <div className="text-gray-400 text-sm">Sync your Pixel Watch data automatically</div>
+      </div>
+    </div>
+    <button
+      onClick={() => window.location.href = '/api/google-fit/connect'}
+      className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-all"
+    >
+      Connect
+    </button>
+  </div>
+)}
 
         <div className="bg-gray-900 rounded-2xl p-6 border border-green-900">
           <div className="flex items-center gap-2 mb-3">
