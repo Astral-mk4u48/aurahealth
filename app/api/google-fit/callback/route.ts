@@ -23,6 +23,7 @@ export async function GET(request: Request) {
   })
 
   const tokens = await tokenRes.json()
+  console.log('Tokens received:', tokens.access_token ? 'yes' : 'no', tokens.error || '')
 
   if (tokens.access_token) {
     const cookieStore = await cookies()
@@ -40,14 +41,18 @@ export async function GET(request: Request) {
     )
 
     const { data: { user } } = await supabase.auth.getUser()
+    console.log('User found:', user?.id || 'none')
 
     if (user) {
-      await supabase.from('profiles').update({
-        goals: {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
           google_fit_access_token: tokens.access_token,
-          google_fit_refresh_token: tokens.refresh_token,
-        }
-      }).eq('id', user.id)
+          google_fit_refresh_token: tokens.refresh_token || null,
+        })
+        .eq('id', user.id)
+      
+      console.log('Update error:', error?.message || 'none')
     }
   }
 
