@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const code = url.searchParams.get('code')
+  const userId = url.searchParams.get('state')
 
-  if (!code) {
+  if (!code || !userId) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
@@ -24,36 +24,23 @@ export async function GET(request: Request) {
 
   const tokens = await tokenRes.json()
   console.log('Tokens received:', tokens.access_token ? 'yes' : 'no', tokens.error || '')
+  console.log('User ID from state:', userId)
 
-  if (tokens.access_token) {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
+  if (tokens.access_token && userId) {
+    const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() { return cookieStore.getAll() },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-          },
-        },
-      }
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    const { data: { user } } = await supabase.auth.getUser()
-    console.log('User found:', user?.id || 'none')
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        google_fit_access_token: tokens.access_token,
+        google_fit_refresh_token: tokens.refresh_token || null,
+      })
+      .eq('id', userId)
 
-    if (user) {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          google_fit_access_token: tokens.access_token,
-          google_fit_refresh_token: tokens.refresh_token || null,
-        })
-        .eq('id', user.id)
-      
-      console.log('Update error:', error?.message || 'none')
-    }
+    console.log('Update error:', error?.message || 'none')
   }
 
   return NextResponse.redirect(new URL('/dashboard?fit=connected', request.url))
