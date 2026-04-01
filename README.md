@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AuraHealth
 
-## Getting Started
+**Copyright © 2026 Pavan Sankiliraj. All Rights Reserved.**
 
-First, run the development server:
+This project and its source code are the intellectual property of Pavan Sankiliraj. 
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## License
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+This repository is made public for portfolio and demonstration purposes only.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**You may NOT:**
+- Copy, clone, or fork this project for personal or commercial use
+- Use any part of this code in your own projects
+- Redistribute, sell, or sublicense this code
+- Deploy your own version of this application
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**You may:**
+- View the source code for educational reference
+- Star or share the repository link
 
-## Learn More
+Any unauthorized use of this code is strictly prohibited and may result in legal action.
 
-To learn more about Next.js, take a look at the following resources:
+## About
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+AuraHealth is an AI-powered personal health tracking web application built with:
+- **Frontend:** Next.js 16, Tailwind CSS
+- **Backend:** Supabase (PostgreSQL)
+- **AI:** Google Gemini 2.5 Flash
+- **Auth:** Supabase Auth + Google OAuth
+- **Deployment:** Vercel
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Features
 
-## Deploy on Vercel
+- AI food logging — type anything in plain English
+- 400+ exercises with form guides and AI variations
+- 500+ recipes with ingredient swap AI
+- Personalized calorie and macro targets
+- Weekly AI-generated health reports
+- Google Fit / Pixel Watch integration
+- Workout tracker (strength + cardio)
+- Weight tracker with progress chart
+- AI health coach chat
+- And much more...
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+*Built by Pavan Sankiliraj — 2026*
