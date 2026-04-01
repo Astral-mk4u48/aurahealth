@@ -27,8 +27,6 @@ export default function Dashboard() {
   const [logs, setLogs] = useState<any[]>([])
   const [confirmation, setConfirmation] = useState<any>(null)
   const [placeholderIndex, setPlaceholderIndex] = useState(0)
-  const [fitData, setFitData] = useState<any>(null)
-  const [fitConnected, setFitConnected] = useState(false)
   const router = useRouter()
 
   const hour = new Date().getHours()
@@ -54,9 +52,6 @@ export default function Dashboard() {
       if (!profile) { router.push('/onboarding'); return }
       setUser(user)
       setProfile(profile)
-      if (profile?.google_fit_access_token) {
-        fetchFitData(profile.google_fit_access_token)
-      }
       await fetchTodayLogs(user.id)
       setLoading(false)
     }
@@ -269,51 +264,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {fitConnected && fitData ? (
-          <div className="bg-gray-900 rounded-2xl p-6 border border-blue-900">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">⌚</span>
-                <span className="text-blue-400 font-semibold">Google Fit Today</span>
-              </div>
-              <span className="text-xs text-gray-500">Live from your watch</span>
-            </div>
-            <div className="grid grid-cols-4 gap-3">
-              <div className="bg-gray-800 rounded-xl p-3 text-center">
-                <div className="text-2xl font-bold text-white">{fitData.steps.toLocaleString()}</div>
-                <div className="text-gray-400 text-xs">steps</div>
-              </div>
-              <div className="bg-gray-800 rounded-xl p-3 text-center">
-                <div className="text-2xl font-bold text-orange-400">{fitData.calories}</div>
-                <div className="text-gray-400 text-xs">kcal burned</div>
-              </div>
-              <div className="bg-gray-800 rounded-xl p-3 text-center">
-                <div className="text-2xl font-bold text-red-400">{fitData.heartRate || '-'}</div>
-                <div className="text-gray-400 text-xs">bpm peak</div>
-              </div>
-              <div className="bg-gray-800 rounded-xl p-3 text-center">
-                <div className="text-2xl font-bold text-green-400">{fitData.distance}</div>
-                <div className="text-gray-400 text-xs">km</div>
-              </div>
-            </div>
-          </div>
-        ) : (
-  <div className="bg-gray-900 rounded-2xl p-5 border border-gray-800 flex items-center justify-between">
-    <div className="flex items-center gap-3">
-      <span className="text-2xl">⌚</span>
-      <div>
-        <div className="font-semibold">Connect Google Fit</div>
-        <div className="text-gray-400 text-sm">Sync your Pixel Watch data automatically</div>
-      </div>
-    </div>
-    <button
-      onClick={() => window.location.href = '/api/google-fit/connect'}
-      className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-all"
-    >
-      Connect
-    </button>
-  </div>
-)}
 
         <div className="bg-gray-900 rounded-2xl p-6 border border-green-900">
           <div className="flex items-center gap-2 mb-3">
