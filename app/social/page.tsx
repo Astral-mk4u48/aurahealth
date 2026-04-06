@@ -6,14 +6,14 @@ import Link from 'next/link'
 
 export default function Social() {
   const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
   const [myGroups, setMyGroups] = useState<any[]>([])
+  const [publicGroups, setPublicGroups] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'mygroups' | 'discover' | 'join'>('mygroups')
-  const [publicGroups, setPublicGroups] = useState<any[]>([])
   const [joinCode, setJoinCode] = useState('')
   const [joinError, setJoinError] = useState('')
   const [joinSuccess, setJoinSuccess] = useState('')
+  const [joining, setJoining] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [newGroup, setNewGroup] = useState({ name: '', description: '', is_private: false })
   const router = useRouter()
@@ -22,10 +22,7 @@ export default function Social() {
     const getData = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (!profile) { router.push('/onboarding'); return }
       setUser(user)
-      setProfile(profile)
       await Promise.all([fetchMyGroups(user.id), fetchPublicGroups()])
       setLoading(false)
     }
@@ -33,20 +30,33 @@ export default function Social() {
   }, [router])
 
   const fetchMyGroups = async (userId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('group_members')
-      .select('*, group:group_id(*)')
+      .select(`
+        group_id,
+        joined_at,
+        groups (
+          id,
+          name,
+          description,
+          code,
+          is_private,
+          creator_id
+        )
+      `)
       .eq('user_id', userId)
+    console.log('My groups:', data, error)
     if (data) setMyGroups(data)
   }
 
   const fetchPublicGroups = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('groups')
       .select('*')
       .eq('is_private', false)
       .order('created_at', { ascending: false })
       .limit(20)
+    console.log('Public groups:', data, error)
     if (data) setPublicGroups(data)
   }
 
@@ -55,19 +65,25 @@ export default function Social() {
   const createGroup = async () => {
     if (!newGroup.name.trim() || !user) return
     setCreating(true)
-    const { data, error } = await supabase.from('groups').insert({
-      name: newGroup.name,
-      description: newGroup.description,
-      creator_id: user.id,
-      code: generateCode(),
-      is_private: newGroup.is_private,
-    }).select().single()
+    const { data, error } = await supabase
+      .from('groups')
+      .insert({
+        name: newGroup.name,
+        description: newGroup.description,
+        creator_id: user.id,
+        code: generateCode(),
+        is_private: newGroup.is_private,
+      })
+      .select()
+      .single()
+
+    console.log('Created group:', data, error)
 
     if (data) {
-      await supabase.from('group_members').insert({
-        group_id: data.id,
-        user_id: user.id,
-      })
+      const { error: memberError } = await supabase
+        .from('group_members')
+        .insert({ group_id: data.id, user_id: user.id })
+      console.log('Added as member:', memberError)
       setNewGroup({ name: '', description: '', is_private: false })
       await fetchMyGroups(user.id)
       await fetchPublicGroups()
@@ -76,27 +92,58 @@ export default function Social() {
     setCreating(false)
   }
 
-  const joinGroup = async () => {
+  const joinGroupByCode = async () => {
     if (!joinCode.trim() || !user) return
     setJoinError('')
     setJoinSuccess('')
-    const { data: group } = await supabase
+
+    const { data: group, error } = await supabase
       .from('groups')
       .select('*')
-      .eq('code', joinCode.toUpperCase())
+      .eq('code', joinCode.toUpperCase().trim())
       .single()
+
+    console.log('Found group:', group, error)
 
     if (!group) { setJoinError('Group not found. Check the code and try again.'); return }
 
-    const { error } = await supabase.from('group_members').insert({
-      group_id: group.id,
-      user_id: user.id,
-    })
+    const { data: existing } = await supabase
+      .from('group_members')
+      .select('id')
+      .eq('group_id', group.id)
+      .eq('user_id', user.id)
+      .single()
 
-    if (error) { setJoinError('You are already in this group!'); return }
+    if (existing) { setJoinError('You are already in this group!'); return }
+
+    const { error: joinError } = await supabase
+      .from('group_members')
+      .insert({ group_id: group.id, user_id: user.id })
+
+    if (joinError) { setJoinError('Failed to join. Try again.'); return }
+
     setJoinSuccess(`Joined "${group.name}" successfully!`)
     setJoinCode('')
     await fetchMyGroups(user.id)
+  }
+
+  const joinPublicGroup = async (groupId: string, groupName: string) => {
+    if (!user) return
+    setJoining(groupId)
+
+    const { data: existing } = await supabase
+      .from('group_members')
+      .select('id')
+      .eq('group_id', groupId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!existing) {
+      await supabase.from('group_members').insert({ group_id: groupId, user_id: user.id })
+      await fetchMyGroups(user.id)
+    }
+    setJoining(null)
+    router.push(`/social/groups/${groupId}`)
   }
 
   if (loading) return (
@@ -118,7 +165,7 @@ export default function Social() {
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize transition-all ${tab === t ? 'bg-green-500 text-black' : 'text-gray-400 hover:text-white'}`}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab === t ? 'bg-green-500 text-black' : 'text-gray-400 hover:text-white'}`}
             >
               {t === 'mygroups' ? '👥 My Groups' : t === 'discover' ? '🌍 Discover' : '+ Join / Create'}
             </button>
@@ -137,19 +184,19 @@ export default function Social() {
                 </button>
               </div>
             ) : (
-              myGroups.map(member => (
-                <Link href={`/social/groups/${member.group_id}`} key={member.id}>
+              myGroups.map((member: any) => (
+                <Link href={`/social/groups/${member.group_id}`} key={member.group_id}>
                   <div className="bg-gray-900 rounded-2xl p-6 hover:border-green-800 border border-transparent transition-all cursor-pointer">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="font-bold text-lg">{member.group?.name}</h3>
-                        <p className="text-gray-400 text-sm mt-1">{member.group?.description || 'No description'}</p>
+                        <h3 className="font-bold text-lg">{member.groups?.name}</h3>
+                        <p className="text-gray-400 text-sm mt-1">{member.groups?.description || 'No description'}</p>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right space-y-1">
                         <div className="text-xs bg-gray-800 px-3 py-1 rounded-full text-gray-400">
-                          {member.group?.is_private ? '🔒 Private' : '🌍 Public'}
+                          {member.groups?.is_private ? '🔒 Private' : '🌍 Public'}
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">Code: {member.group?.code}</div>
+                        <div className="text-xs text-gray-500">Code: {member.groups?.code}</div>
                       </div>
                     </div>
                   </div>
@@ -166,7 +213,7 @@ export default function Social() {
               <div className="text-center py-10 text-gray-500">No public groups yet. Create one!</div>
             ) : (
               publicGroups.map(group => {
-                const isMember = myGroups.some(m => m.group_id === group.id)
+                const isMember = myGroups.some((m: any) => m.group_id === group.id)
                 return (
                   <div key={group.id} className="bg-gray-900 rounded-2xl p-6 flex items-center justify-between">
                     <div>
@@ -179,13 +226,11 @@ export default function Social() {
                       </Link>
                     ) : (
                       <button
-                        onClick={async () => {
-                          await supabase.from('group_members').insert({ group_id: group.id, user_id: user.id })
-                          await fetchMyGroups(user.id)
-                        }}
-                        className="bg-gray-800 hover:bg-gray-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-all"
+                        onClick={() => joinPublicGroup(group.id, group.name)}
+                        disabled={joining === group.id}
+                        className="bg-gray-800 hover:bg-gray-700 disabled:bg-gray-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-all"
                       >
-                        Join
+                        {joining === group.id ? 'Joining...' : 'Join'}
                       </button>
                     )}
                   </div>
@@ -206,10 +251,10 @@ export default function Social() {
                   value={joinCode}
                   onChange={e => setJoinCode(e.target.value.toUpperCase())}
                   placeholder="Enter code e.g. ABC123"
-                  className="flex-1 bg-gray-800 border border-gray-700 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 placeholder-gray-600 uppercase"
+                  className="flex-1 bg-gray-800 border border-gray-700 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 placeholder-gray-600"
                 />
                 <button
-                  onClick={joinGroup}
+                  onClick={joinGroupByCode}
                   className="bg-green-500 hover:bg-green-600 text-black font-semibold px-6 py-3 rounded-xl transition-all"
                 >
                   Join
@@ -245,9 +290,9 @@ export default function Social() {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setNewGroup(g => ({ ...g, is_private: !g.is_private }))}
-                    className={`w-12 h-6 rounded-full transition-all ${newGroup.is_private ? 'bg-green-500' : 'bg-gray-700'}`}
+                    className={`w-12 h-6 rounded-full transition-all relative ${newGroup.is_private ? 'bg-green-500' : 'bg-gray-700'}`}
                   >
-                    <div className={`w-5 h-5 bg-white rounded-full transition-all mx-0.5 ${newGroup.is_private ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                    <div className={`w-5 h-5 bg-white rounded-full transition-all absolute top-0.5 ${newGroup.is_private ? 'left-6' : 'left-0.5'}`}></div>
                   </button>
                   <span className="text-gray-400 text-sm">{newGroup.is_private ? '🔒 Private — invite only' : '🌍 Public — anyone can join'}</span>
                 </div>
