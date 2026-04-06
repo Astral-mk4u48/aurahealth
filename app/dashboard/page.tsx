@@ -58,21 +58,6 @@ export default function Dashboard() {
     getUser()
   }, [router])
 
-  const fetchFitData = async (accessToken: string) => {
-    try {
-      const res = await fetch('/api/google-fit/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken })
-      })
-      const data = await res.json()
-      setFitData(data)
-      setFitConnected(true)
-    } catch {
-      console.log('Google Fit not connected')
-    }
-  }
-
   const fetchTodayLogs = async (userId: string) => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -263,7 +248,6 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-
 
         <div className="bg-gray-900 rounded-2xl p-6 border border-green-900">
           <div className="flex items-center gap-2 mb-3">
