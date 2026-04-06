@@ -61,6 +61,8 @@ export default function Navbar() {
   { href: '/library', label: 'Library', icon: '📚' },
   { href: '/progress', label: 'Progress', icon: '📈' },
   { href: '/workouts', label: 'Workouts', icon: '🏋️' },
+  { href: '/plan', label: 'Plan', icon: '📋' },
+  { href: '/social', label: 'Social', icon: '👥' },
   { href: '/ai', label: 'AI Coach', icon: '🤖' },
   { href: '/profile', label: 'Profile', icon: '👤' },
 ]

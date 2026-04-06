@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
-const steps = ['name', 'age', 'body', 'activity', 'goal']
+const steps = ['name', 'age', 'body', 'activity', 'goal', 'muscles']
 
 const activityLevels = [
   { id: 'sedentary', label: 'Sedentary', desc: 'Little or no exercise', multiplier: 1.2 },
