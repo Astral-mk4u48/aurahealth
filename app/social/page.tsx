@@ -30,24 +30,30 @@ export default function Social() {
   }, [router])
 
   const fetchMyGroups = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('group_members')
-      .select(`
-        group_id,
-        joined_at,
-        groups (
-          id,
-          name,
-          description,
-          code,
-          is_private,
-          creator_id
-        )
-      `)
-      .eq('user_id', userId)
-    console.log('My groups:', data, error)
-    if (data) setMyGroups(data)
+  const { data: memberData } = await supabase
+    .from('group_members')
+    .select('group_id, joined_at')
+    .eq('user_id', userId)
+
+  if (!memberData || memberData.length === 0) {
+    setMyGroups([])
+    return
   }
+
+  const groupIds = memberData.map(m => m.group_id)
+  const { data: groupData } = await supabase
+    .from('groups')
+    .select('*')
+    .in('id', groupIds)
+
+  if (groupData) {
+    const combined = memberData.map(m => ({
+      ...m,
+      groups: groupData.find(g => g.id === m.group_id)
+    }))
+    setMyGroups(combined)
+  }
+}
 
   const fetchPublicGroups = async () => {
     const { data, error } = await supabase
