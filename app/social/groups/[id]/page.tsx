@@ -8,12 +8,16 @@ export default function GroupPage() {
   const [group, setGroup] = useState<any>(null)
   const [members, setMembers] = useState<any[]>([])
   const [messages, setMessages] = useState<any[]>([])
+  const [bans, setBans] = useState<any[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'leaderboard' | 'chat'>('leaderboard')
+  const [tab, setTab] = useState<'leaderboard' | 'chat' | 'members'>('leaderboard')
   const [showSettings, setShowSettings] = useState(false)
   const [messageInput, setMessageInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [banModal, setBanModal] = useState<any>(null)
+  const [banDuration, setBanDuration] = useState('1day')
+  const [banReason, setBanReason] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const params = useParams()
@@ -30,14 +34,19 @@ export default function GroupPage() {
     getData()
 
     const channel = supabase
-      .channel('group-messages')
+      .channel(`group-${params.id}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'group_messages',
         filter: `group_id=eq.${params.id}`
-      }, (payload) => {
-        setMessages(prev => [...prev, payload.new])
+      }, async (payload) => {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', payload.new.user_id)
+          .single()
+        setMessages(prev => [...prev, { ...payload.new, profile }])
       })
       .subscribe()
 
@@ -50,27 +59,20 @@ export default function GroupPage() {
 
   const fetchGroup = async (userId: string) => {
     const { data: group } = await supabase
-      .from('groups')
-      .select('*')
-      .eq('id', params.id)
-      .single()
-    if (group) {
-      setGroup(group)
-      setIsAdmin(group.creator_id === userId)
-    }
+      .from('groups').select('*').eq('id', params.id).single()
+    if (group) { setGroup(group); setIsAdmin(group.creator_id === userId) }
 
     const { data: memberRows } = await supabase
-      .from('group_members')
-      .select('*')
-      .eq('group_id', params.id)
-
+      .from('group_members').select('*').eq('group_id', params.id)
     if (!memberRows || memberRows.length === 0) { setMembers([]); return }
+
+    const { data: banData } = await supabase
+      .from('group_bans').select('*').eq('group_id', params.id)
+    if (banData) setBans(banData)
 
     const userIds = memberRows.map((m: any) => m.user_id)
     const { data: profiles } = await supabase
-      .from('profiles')
-      .select('id, username, goals')
-      .in('id', userIds)
+      .from('profiles').select('id, username, goals').in('id', userIds)
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -79,7 +81,7 @@ export default function GroupPage() {
       const profile = profiles?.find(p => p.id === m.user_id)
       const { data: logs } = await supabase
         .from('logs_intake').select('macros').eq('user_id', m.user_id).gte('created_at', today.toISOString())
-      const todayCalories = logs?.reduce((a, l) => a + (l.macros?.calories || 0), 0) || 0
+      const todayCalories = logs?.reduce((a: number, l: any) => a + (l.macros?.calories || 0), 0) || 0
       const { data: workouts } = await supabase
         .from('workout_logs').select('id').eq('user_id', m.user_id).gte('logged_at', today.toISOString())
       return {
@@ -107,13 +109,30 @@ export default function GroupPage() {
   const sendMessage = async () => {
     if (!messageInput.trim() || !user || sending) return
     setSending(true)
-    const badWords = ['spam', 'hate', 'abuse']
-    const hasBadWord = badWords.some(w => messageInput.toLowerCase().includes(w))
-    if (hasBadWord) {
-      alert('Your message contains inappropriate content.')
+
+    const isBanned = bans.find(b => b.user_id === user.id)
+    if (isBanned) {
+      const until = new Date(isBanned.banned_until)
+      if (until > new Date()) {
+        alert(`You are banned until ${until.toLocaleDateString()}. Reason: ${isBanned.reason}`)
+        setSending(false)
+        return
+      }
+    }
+
+    const modRes = await fetch('/api/moderate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: messageInput.trim() })
+    })
+    const modData = await modRes.json()
+
+    if (modData.isProfanity) {
+      alert('Your message was blocked because it contains inappropriate content.')
       setSending(false)
       return
     }
+
     await supabase.from('group_messages').insert({
       group_id: params.id,
       user_id: user.id,
@@ -128,27 +147,61 @@ export default function GroupPage() {
     setMessages(prev => prev.filter(m => m.id !== messageId))
   }
 
+  const kickMember = async (memberId: string, memberName: string) => {
+    if (!isAdmin) return
+    if (!confirm(`Kick ${memberName}? They can rejoin if they want.`)) return
+    await supabase.from('group_members').delete().eq('group_id', params.id).eq('user_id', memberId)
+    setMembers(prev => prev.filter(m => m.user_id !== memberId))
+  }
+
+  const banMember = async () => {
+    if (!isAdmin || !banModal) return
+    const durations: any = {
+      '1hour': 1 / 24,
+      '1day': 1,
+      '3days': 3,
+      '1week': 7,
+      '1month': 30,
+      'permanent': 36500,
+    }
+    const days = durations[banDuration] || 1
+    const bannedUntil = new Date()
+    bannedUntil.setDate(bannedUntil.getDate() + days)
+
+    await supabase.from('group_bans').upsert({
+      group_id: params.id,
+      user_id: banModal.user_id,
+      banned_by: user.id,
+      reason: banReason || 'No reason given',
+      banned_until: bannedUntil.toISOString(),
+    })
+    await supabase.from('group_members').delete().eq('group_id', params.id).eq('user_id', banModal.user_id)
+    setMembers(prev => prev.filter(m => m.user_id !== banModal.user_id))
+    setBans(prev => [...prev, { user_id: banModal.user_id, banned_until: bannedUntil.toISOString(), reason: banReason }])
+    setBanModal(null)
+    setBanReason('')
+  }
+
+  const unbanMember = async (userId: string) => {
+    await supabase.from('group_bans').delete().eq('group_id', params.id).eq('user_id', userId)
+    setBans(prev => prev.filter(b => b.user_id !== userId))
+  }
+
   const leaveGroup = async () => {
-    if (!user || isAdmin) { alert('Admins cannot leave their own group. Delete it instead.'); return }
-    if (!confirm('Are you sure you want to leave this group?')) return
+    if (!user || isAdmin) { alert('Admins cannot leave. Delete the group instead.'); return }
+    if (!confirm('Leave this group?')) return
     await supabase.from('group_members').delete().eq('group_id', params.id).eq('user_id', user.id)
     router.push('/social')
   }
 
   const deleteGroup = async () => {
     if (!user || !isAdmin) return
-    if (!confirm('This will permanently delete the group, all messages and all data. Are you sure?')) return
+    if (!confirm('Permanently delete this group and ALL data?')) return
     await supabase.from('group_messages').delete().eq('group_id', params.id)
+    await supabase.from('group_bans').delete().eq('group_id', params.id)
     await supabase.from('group_members').delete().eq('group_id', params.id)
     await supabase.from('groups').delete().eq('id', params.id)
     router.push('/social')
-  }
-
-  const kickMember = async (memberId: string, memberName: string) => {
-    if (!isAdmin) return
-    if (!confirm(`Kick ${memberName} from the group?`)) return
-    await supabase.from('group_members').delete().eq('group_id', params.id).eq('user_id', memberId)
-    setMembers(prev => prev.filter(m => m.user_id !== memberId))
   }
 
   if (loading) return (
@@ -164,108 +217,129 @@ export default function GroupPage() {
   )
 
   const sortedMembers = [...members].sort((a, b) => b.todayCalories - a.todayCalories)
+  const activeBans = bans.filter(b => new Date(b.banned_until) > new Date())
 
   return (
     <main className="min-h-screen bg-black text-white p-6">
       <div className="max-w-3xl mx-auto space-y-6">
+
+        {banModal && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md space-y-4">
+              <h3 className="font-bold text-lg">Ban {banModal.username}</h3>
+              <div className="space-y-2">
+                <label className="text-gray-400 text-sm">Duration</label>
+                <select
+                  value={banDuration}
+                  onChange={e => setBanDuration(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-4 py-3 outline-none"
+                >
+                  <option value="1hour">1 Hour</option>
+                  <option value="1day">1 Day</option>
+                  <option value="3days">3 Days</option>
+                  <option value="1week">1 Week</option>
+                  <option value="1month">1 Month</option>
+                  <option value="permanent">Permanent</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-gray-400 text-sm">Reason (optional)</label>
+                <input
+                  type="text"
+                  value={banReason}
+                  onChange={e => setBanReason(e.target.value)}
+                  placeholder="e.g. Spamming"
+                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-4 py-3 outline-none"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setBanModal(null)} className="flex-1 bg-gray-800 text-white py-3 rounded-xl">Cancel</button>
+                <button onClick={banMember} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl">Ban</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
-          <button onClick={() => router.back()} className="text-gray-400 hover:text-white flex items-center gap-2 text-sm">
-            ← Back
-          </button>
+          <button onClick={() => router.back()} className="text-gray-400 hover:text-white text-sm">← Back</button>
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-800 transition-all"
+            className={`text-sm px-3 py-2 rounded-lg transition-all ${showSettings ? 'bg-green-500 text-black font-semibold' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
           >
             ⚙️ Settings
           </button>
         </div>
 
         {showSettings && (
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 space-y-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 space-y-5">
             <h3 className="font-bold text-lg">Group Settings</h3>
+
             <div className="bg-gray-800 rounded-xl px-4 py-3 flex items-center justify-between">
               <div>
-                <div className="font-semibold text-sm">Invite Code</div>
-                <div className="text-green-400 font-bold tracking-widest">{group.code}</div>
+                <div className="text-gray-400 text-xs">Invite Code</div>
+                <div className="text-green-400 font-bold tracking-widest text-lg">{group.code}</div>
               </div>
               <button
-                onClick={() => { navigator.clipboard.writeText(group.code); alert('Code copied!') }}
-                className="text-gray-400 hover:text-white text-sm bg-gray-700 px-3 py-1 rounded-lg"
+                onClick={() => { navigator.clipboard.writeText(group.code); alert('Copied!') }}
+                className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded-lg"
               >
                 Copy
               </button>
             </div>
 
-            {isAdmin && (
-              <>
-                <div className="space-y-2">
-                  <div className="text-gray-400 text-sm font-semibold">Members</div>
-                  {members.map(m => (
-                    <div key={m.user_id} className="flex items-center justify-between bg-gray-800 rounded-xl px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-black text-sm font-bold">
-                          {m.username?.[0]?.toUpperCase()}
-                        </div>
-                        <span className="font-medium text-sm">{m.username}</span>
-                        {m.user_id === group.creator_id && <span className="text-xs bg-yellow-900 text-yellow-400 px-2 py-0.5 rounded-full">👑 Admin</span>}
-                      </div>
-                      {m.user_id !== user?.id && (
-                        <button
-                          onClick={() => kickMember(m.user_id, m.username)}
-                          className="text-red-400 hover:text-red-300 text-xs bg-red-950 px-3 py-1 rounded-lg"
-                        >
-                          Kick
-                        </button>
-                      )}
+            {isAdmin && activeBans.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-gray-400 text-sm font-semibold">Banned Users ({activeBans.length})</div>
+                {activeBans.map(ban => (
+                  <div key={ban.user_id} className="flex items-center justify-between bg-red-950 rounded-xl px-4 py-3 border border-red-900">
+                    <div>
+                      <div className="text-sm font-medium text-red-300">{ban.user_id}</div>
+                      <div className="text-xs text-red-400">Until: {new Date(ban.banned_until).toLocaleDateString()} · {ban.reason}</div>
                     </div>
-                  ))}
-                </div>
-                <button
-                  onClick={deleteGroup}
-                  className="w-full bg-red-950 hover:bg-red-900 text-red-400 font-semibold py-3 rounded-xl transition-all border border-red-900"
-                >
-                  🗑️ Delete Group
-                </button>
-              </>
+                    <button onClick={() => unbanMember(ban.user_id)} className="text-green-400 text-xs hover:text-green-300">Unban</button>
+                  </div>
+                ))}
+              </div>
             )}
 
             {!isAdmin && (
-              <button
-                onClick={leaveGroup}
-                className="w-full bg-gray-800 hover:bg-gray-700 text-red-400 font-semibold py-3 rounded-xl transition-all"
-              >
+              <button onClick={leaveGroup} className="w-full bg-gray-800 hover:bg-gray-700 text-red-400 font-semibold py-3 rounded-xl">
                 Leave Group
+              </button>
+            )}
+
+            {isAdmin && (
+              <button onClick={deleteGroup} className="w-full bg-red-950 hover:bg-red-900 text-red-400 font-semibold py-3 rounded-xl border border-red-900">
+                🗑️ Delete Group Permanently
               </button>
             )}
           </div>
         )}
 
-        <div className="bg-gray-900 rounded-2xl p-4">
-          <div className="flex items-center justify-between mb-2">
+        <div className="bg-gray-900 rounded-2xl p-4 flex items-center justify-between">
+          <div>
             <h1 className="text-2xl font-bold">{group.name}</h1>
-            <div className="flex items-center gap-2">
-              {isAdmin && <span className="text-xs bg-yellow-900 text-yellow-400 px-2 py-1 rounded-full">👑 Admin</span>}
-              <span className="text-xs bg-gray-800 px-3 py-1 rounded-full text-gray-400">
-                {group.is_private ? '🔒 Private' : '🌍 Public'}
-              </span>
-            </div>
+            {group.description && <p className="text-gray-400 text-sm">{group.description}</p>}
+            <p className="text-gray-500 text-xs mt-1">{members.length} members</p>
           </div>
-          <p className="text-gray-500 text-sm">{members.length} members</p>
+          <div className="flex items-center gap-2">
+            {isAdmin && <span className="text-xs bg-yellow-900 text-yellow-400 px-2 py-1 rounded-full">👑 Admin</span>}
+            <span className="text-xs bg-gray-800 px-3 py-1 rounded-full text-gray-400">
+              {group.is_private ? '🔒' : '🌍'}
+            </span>
+          </div>
         </div>
 
-        <div className="flex bg-gray-900 rounded-xl p-1 w-fit gap-1">
-          <button
-            onClick={() => setTab('leaderboard')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab === 'leaderboard' ? 'bg-green-500 text-black' : 'text-gray-400 hover:text-white'}`}
-          >
-            🏆 Leaderboard
-          </button>
-          <button
-            onClick={() => { setTab('chat'); fetchMessages() }}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab === 'chat' ? 'bg-green-500 text-black' : 'text-gray-400 hover:text-white'}`}
-          >
-            💬 Chat
-          </button>
+        <div className="flex bg-gray-900 rounded-xl p-1 gap-1">
+          {(['leaderboard', 'chat', 'members'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => { setTab(t); if (t === 'chat') fetchMessages() }}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold capitalize transition-all ${tab === t ? 'bg-green-500 text-black' : 'text-gray-400 hover:text-white'}`}
+            >
+              {t === 'leaderboard' ? '🏆 Leaderboard' : t === 'chat' ? '💬 Chat' : '👥 Members'}
+            </button>
+          ))}
         </div>
 
         {tab === 'leaderboard' && (
@@ -273,40 +347,77 @@ export default function GroupPage() {
             <p className="text-gray-500 text-sm">Ranked by calories logged today</p>
             {sortedMembers.length === 0 ? (
               <div className="text-center py-10 text-gray-500">No members found</div>
-            ) : (
-              sortedMembers.map((member, i) => {
-                const isMe = member.user_id === user?.id
-                const progress = Math.min((member.todayCalories / member.dailyTarget) * 100, 100)
-                const onTrack = member.todayCalories >= member.dailyTarget * 0.5
-                return (
-                  <div key={member.user_id} className={`flex items-center gap-4 p-4 rounded-xl ${isMe ? 'bg-green-950 border border-green-800' : 'bg-gray-800'}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${i === 0 ? 'bg-yellow-500 text-black' : i === 1 ? 'bg-gray-400 text-black' : i === 2 ? 'bg-orange-600 text-black' : 'bg-gray-700 text-gray-400'}`}>
-                      {i + 1}
-                    </div>
-                    <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-black font-bold flex-shrink-0">
-                      {member.username?.[0]?.toUpperCase() || '?'}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold">{member.username}</span>
-                        {isMe && <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">You</span>}
-                        {member.user_id === group.creator_id && <span className="text-xs bg-yellow-900 text-yellow-400 px-2 py-0.5 rounded-full">👑</span>}
-                      </div>
-                      <div className="w-full bg-gray-700 rounded-full h-1.5 mt-1">
-                        <div className="bg-green-400 h-1.5 rounded-full transition-all" style={{ width: `${progress}%` }}></div>
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className="font-bold text-green-400">{member.todayCalories} kcal</div>
-                      <div className="text-gray-500 text-xs">{onTrack ? '✓ On track' : 'Behind'}</div>
-                    </div>
-                    {member.workoutsToday > 0 && (
-                      <div className="text-xs bg-blue-900 text-blue-400 px-2 py-1 rounded-full flex-shrink-0">💪</div>
-                    )}
+            ) : sortedMembers.map((member, i) => {
+              const isMe = member.user_id === user?.id
+              const progress = Math.min((member.todayCalories / member.dailyTarget) * 100, 100)
+              return (
+                <div key={member.user_id} className={`flex items-center gap-4 p-4 rounded-xl ${isMe ? 'bg-green-950 border border-green-800' : 'bg-gray-800'}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${i === 0 ? 'bg-yellow-500 text-black' : i === 1 ? 'bg-gray-400 text-black' : i === 2 ? 'bg-orange-600 text-black' : 'bg-gray-700 text-gray-400'}`}>
+                    {i + 1}
                   </div>
-                )
-              })
-            )}
+                  <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-black font-bold flex-shrink-0">
+                    {member.username?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold">{member.username}</span>
+                      {isMe && <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">You</span>}
+                      {member.user_id === group.creator_id && <span className="text-xs bg-yellow-900 text-yellow-400 px-2 py-0.5 rounded-full">👑</span>}
+                    </div>
+                    <div className="w-full bg-gray-700 rounded-full h-1.5 mt-1">
+                      <div className="bg-green-400 h-1.5 rounded-full" style={{ width: `${progress}%` }}></div>
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="font-bold text-green-400">{member.todayCalories} kcal</div>
+                    <div className="text-gray-500 text-xs">{member.todayCalories >= member.dailyTarget * 0.5 ? '✓ On track' : 'Behind'}</div>
+                  </div>
+                  {member.workoutsToday > 0 && <div className="text-xs bg-blue-900 text-blue-400 px-2 py-1 rounded-full">💪</div>}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {tab === 'members' && (
+          <div className="bg-gray-900 rounded-2xl p-6 space-y-3">
+            <h3 className="font-semibold">All Members</h3>
+            {members.map(member => {
+              const isMe = member.user_id === user?.id
+              return (
+                <div key={member.user_id} className="flex items-center justify-between bg-gray-800 rounded-xl px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 bg-green-500 rounded-full flex items-center justify-center text-black font-bold text-sm">
+                      {member.username?.[0]?.toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="font-medium text-sm flex items-center gap-2">
+                        {member.username}
+                        {isMe && <span className="text-xs text-gray-500">(you)</span>}
+                        {member.user_id === group.creator_id && <span className="text-xs bg-yellow-900 text-yellow-400 px-1.5 py-0.5 rounded-full">👑</span>}
+                      </div>
+                      <div className="text-gray-500 text-xs">{member.todayCalories} kcal today</div>
+                    </div>
+                  </div>
+                  {isAdmin && !isMe && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => kickMember(member.user_id, member.username)}
+                        className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1 rounded-lg"
+                      >
+                        Kick
+                      </button>
+                      <button
+                        onClick={() => setBanModal(member)}
+                        className="text-xs bg-red-950 hover:bg-red-900 text-red-400 px-3 py-1 rounded-lg"
+                      >
+                        Ban
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
 
@@ -314,43 +425,36 @@ export default function GroupPage() {
           <div className="bg-gray-900 rounded-2xl overflow-hidden">
             <div className="p-4 border-b border-gray-800">
               <h3 className="font-semibold">Group Chat</h3>
-              <p className="text-gray-500 text-xs">Be respectful. Messages are moderated.</p>
+              <p className="text-gray-500 text-xs">Messages are automatically moderated</p>
             </div>
             <div className="h-96 overflow-y-auto p-4 space-y-3">
               {messages.length === 0 ? (
                 <div className="text-center py-10 text-gray-500 text-sm">No messages yet. Say hi!</div>
-              ) : (
-                messages.map(msg => {
-                  const isMe = msg.user_id === user?.id
-                  const canDelete = isMe || isAdmin
-                  return (
-                    <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''}`}>
-                      <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-black text-xs font-bold flex-shrink-0">
-                        {msg.profile?.username?.[0]?.toUpperCase() || '?'}
+              ) : messages.map(msg => {
+                const isMe = msg.user_id === user?.id
+                const canDelete = isMe || isAdmin
+                return (
+                  <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''}`}>
+                    <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-black text-xs font-bold flex-shrink-0">
+                      {msg.profile?.username?.[0]?.toUpperCase() || '?'}
+                    </div>
+                    <div className={`max-w-xs flex flex-col gap-1 ${isMe ? 'items-end' : 'items-start'}`}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">{msg.profile?.username || 'User'}</span>
+                        <span className="text-xs text-gray-600">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        {canDelete && (
+                          <button onClick={() => deleteMessage(msg.id)} className="text-gray-600 hover:text-red-400 text-xs">
+                            {isAdmin && !isMe ? '🛡️' : '✕'}
+                          </button>
+                        )}
                       </div>
-                      <div className={`max-w-xs ${isMe ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500">{msg.profile?.username || 'User'}</span>
-                          {canDelete && (
-                            <button
-                              onClick={() => deleteMessage(msg.id)}
-                              className="text-gray-600 hover:text-red-400 text-xs"
-                            >
-                              {isAdmin && !isMe ? '🛡️' : '✕'}
-                            </button>
-                          )}
-                        </div>
-                        <div className={`px-4 py-2 rounded-2xl text-sm ${isMe ? 'bg-green-500 text-black rounded-tr-sm' : 'bg-gray-800 text-white rounded-tl-sm'}`}>
-                          {msg.content}
-                        </div>
-                        <span className="text-xs text-gray-600">
-                          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                      <div className={`px-4 py-2 rounded-2xl text-sm leading-relaxed ${isMe ? 'bg-green-500 text-black rounded-tr-sm' : 'bg-gray-800 text-white rounded-tl-sm'}`}>
+                        {msg.content}
                       </div>
                     </div>
-                  )
-                })
-              )}
+                  </div>
+                )
+              })}
               <div ref={bottomRef} />
             </div>
             <div className="p-4 border-t border-gray-800 flex gap-3">
@@ -358,7 +462,7 @@ export default function GroupPage() {
                 type="text"
                 value={messageInput}
                 onChange={e => setMessageInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
                 placeholder="Type a message..."
                 className="flex-1 bg-gray-800 border border-gray-700 text-white rounded-xl px-4 py-2 outline-none focus:ring-2 focus:ring-green-500 placeholder-gray-600 text-sm"
               />
@@ -367,7 +471,7 @@ export default function GroupPage() {
                 disabled={sending || !messageInput.trim()}
                 className="bg-green-500 hover:bg-green-600 disabled:bg-gray-700 text-black font-semibold px-4 py-2 rounded-xl transition-all text-sm"
               >
-                Send
+                {sending ? '...' : 'Send'}
               </button>
             </div>
           </div>
