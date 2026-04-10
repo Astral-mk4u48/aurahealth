@@ -9,6 +9,7 @@ export default function GroupPage() {
   const [members, setMembers] = useState<any[]>([])
   const [messages, setMessages] = useState<any[]>([])
   const [bans, setBans] = useState<any[]>([])
+  const [mutes, setMutes] = useState<any[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'leaderboard' | 'chat' | 'members'>('leaderboard')
@@ -16,8 +17,12 @@ export default function GroupPage() {
   const [messageInput, setMessageInput] = useState('')
   const [sending, setSending] = useState(false)
   const [banModal, setBanModal] = useState<any>(null)
+  const [muteModal, setMuteModal] = useState<any>(null)
   const [banDuration, setBanDuration] = useState('1day')
+  const [muteDuration, setMuteDuration] = useState('1hour')
   const [banReason, setBanReason] = useState('')
+  const [muteReason, setMuteReason] = useState('')
+  const [transferModal, setTransferModal] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const params = useParams()
@@ -42,10 +47,7 @@ export default function GroupPage() {
         filter: `group_id=eq.${params.id}`
       }, async (payload) => {
         const { data: profile } = await supabase
-          .from('profiles')
-          .select('username')
-          .eq('id', payload.new.user_id)
-          .single()
+          .from('profiles').select('username').eq('id', payload.new.user_id).single()
         setMessages(prev => [...prev, { ...payload.new, profile }])
       })
       .subscribe()
@@ -69,6 +71,10 @@ export default function GroupPage() {
     const { data: banData } = await supabase
       .from('group_bans').select('*').eq('group_id', params.id)
     if (banData) setBans(banData)
+
+    const { data: muteData } = await supabase
+      .from('group_mutes').select('*').eq('group_id', params.id)
+    if (muteData) setMutes(muteData)
 
     const userIds = memberRows.map((m: any) => m.user_id)
     const { data: profiles } = await supabase
@@ -101,6 +107,7 @@ export default function GroupPage() {
       .select('*, profile:user_id(username)')
       .eq('group_id', params.id)
       .eq('is_deleted', false)
+      .order('is_pinned', { ascending: false })
       .order('created_at', { ascending: true })
       .limit(100)
     if (data) setMessages(data)
@@ -110,14 +117,18 @@ export default function GroupPage() {
     if (!messageInput.trim() || !user || sending) return
     setSending(true)
 
-    const isBanned = bans.find(b => b.user_id === user.id)
-    if (isBanned) {
-      const until = new Date(isBanned.banned_until)
-      if (until > new Date()) {
-        alert(`You are banned until ${until.toLocaleDateString()}. Reason: ${isBanned.reason}`)
-        setSending(false)
-        return
-      }
+    const activeBan = bans.find(b => b.user_id === user.id && new Date(b.banned_until) > new Date())
+    if (activeBan) {
+      alert(`You are banned until ${new Date(activeBan.banned_until).toLocaleDateString()}. Reason: ${activeBan.reason}`)
+      setSending(false)
+      return
+    }
+
+    const activeMute = mutes.find(m => m.user_id === user.id && new Date(m.muted_until) > new Date())
+    if (activeMute) {
+      alert(`You are muted until ${new Date(activeMute.muted_until).toLocaleTimeString()}. Reason: ${activeMute.reason}`)
+      setSending(false)
+      return
     }
 
     const modRes = await fetch('/api/moderate', {
@@ -128,7 +139,7 @@ export default function GroupPage() {
     const modData = await modRes.json()
 
     if (modData.isProfanity) {
-      alert('Your message was blocked because it contains inappropriate content.')
+      alert('Your message was blocked — it contains inappropriate content.')
       setSending(false)
       return
     }
@@ -147,32 +158,25 @@ export default function GroupPage() {
     setMessages(prev => prev.filter(m => m.id !== messageId))
   }
 
+  const pinMessage = async (messageId: string, currentPin: boolean) => {
+    await supabase.from('group_messages').update({ is_pinned: !currentPin }).eq('id', messageId)
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_pinned: !currentPin } : m))
+  }
+
   const kickMember = async (memberId: string, memberName: string) => {
-    if (!isAdmin) return
-    if (!confirm(`Kick ${memberName}? They can rejoin if they want.`)) return
+    if (!confirm(`Kick ${memberName}? They can rejoin anytime.`)) return
     await supabase.from('group_members').delete().eq('group_id', params.id).eq('user_id', memberId)
     setMembers(prev => prev.filter(m => m.user_id !== memberId))
   }
 
   const banMember = async () => {
-    if (!isAdmin || !banModal) return
-    const durations: any = {
-      '1hour': 1 / 24,
-      '1day': 1,
-      '3days': 3,
-      '1week': 7,
-      '1month': 30,
-      'permanent': 36500,
-    }
-    const days = durations[banDuration] || 1
+    if (!banModal) return
+    const durations: any = { '1hour': 1/24, '1day': 1, '3days': 3, '1week': 7, '1month': 30, 'permanent': 36500 }
     const bannedUntil = new Date()
-    bannedUntil.setDate(bannedUntil.getDate() + days)
-
+    bannedUntil.setDate(bannedUntil.getDate() + (durations[banDuration] || 1))
     await supabase.from('group_bans').upsert({
-      group_id: params.id,
-      user_id: banModal.user_id,
-      banned_by: user.id,
-      reason: banReason || 'No reason given',
+      group_id: params.id, user_id: banModal.user_id,
+      banned_by: user.id, reason: banReason || 'No reason given',
       banned_until: bannedUntil.toISOString(),
     })
     await supabase.from('group_members').delete().eq('group_id', params.id).eq('user_id', banModal.user_id)
@@ -182,23 +186,50 @@ export default function GroupPage() {
     setBanReason('')
   }
 
+  const muteMember = async () => {
+    if (!muteModal) return
+    const durations: any = { '15mins': 15/1440, '1hour': 1/24, '6hours': 6/24, '1day': 1, '1week': 7 }
+    const mutedUntil = new Date()
+    mutedUntil.setDate(mutedUntil.getDate() + (durations[muteDuration] || 1/24))
+    await supabase.from('group_mutes').upsert({
+      group_id: params.id, user_id: muteModal.user_id,
+      muted_until: mutedUntil.toISOString(), reason: muteReason || 'No reason given',
+    })
+    setMutes(prev => [...prev, { user_id: muteModal.user_id, muted_until: mutedUntil.toISOString(), reason: muteReason }])
+    setMuteModal(null)
+    setMuteReason('')
+  }
+
   const unbanMember = async (userId: string) => {
     await supabase.from('group_bans').delete().eq('group_id', params.id).eq('user_id', userId)
     setBans(prev => prev.filter(b => b.user_id !== userId))
   }
 
+  const unmuteMember = async (userId: string) => {
+    await supabase.from('group_mutes').delete().eq('group_id', params.id).eq('user_id', userId)
+    setMutes(prev => prev.filter(m => m.user_id !== userId))
+  }
+
+  const transferOwnership = async (newOwnerId: string, newOwnerName: string) => {
+    if (!confirm(`Transfer admin to ${newOwnerName}? You will lose admin access.`)) return
+    await supabase.from('groups').update({ creator_id: newOwnerId }).eq('id', params.id)
+    setGroup((g: any) => ({ ...g, creator_id: newOwnerId }))
+    setIsAdmin(false)
+    setTransferModal(false)
+  }
+
   const leaveGroup = async () => {
-    if (!user || isAdmin) { alert('Admins cannot leave. Delete the group instead.'); return }
+    if (isAdmin) { alert('Transfer ownership first before leaving.'); return }
     if (!confirm('Leave this group?')) return
     await supabase.from('group_members').delete().eq('group_id', params.id).eq('user_id', user.id)
     router.push('/social')
   }
 
   const deleteGroup = async () => {
-    if (!user || !isAdmin) return
-    if (!confirm('Permanently delete this group and ALL data?')) return
+    if (!confirm('Permanently delete this group and ALL data? This cannot be undone.')) return
     await supabase.from('group_messages').delete().eq('group_id', params.id)
     await supabase.from('group_bans').delete().eq('group_id', params.id)
+    await supabase.from('group_mutes').delete().eq('group_id', params.id)
     await supabase.from('group_members').delete().eq('group_id', params.id)
     await supabase.from('groups').delete().eq('id', params.id)
     router.push('/social')
@@ -218,6 +249,8 @@ export default function GroupPage() {
 
   const sortedMembers = [...members].sort((a, b) => b.todayCalories - a.todayCalories)
   const activeBans = bans.filter(b => new Date(b.banned_until) > new Date())
+  const activeMutes = mutes.filter(m => new Date(m.muted_until) > new Date())
+  const pinnedMessages = messages.filter(m => m.is_pinned)
 
   return (
     <main className="min-h-screen bg-black text-white p-6">
@@ -226,14 +259,10 @@ export default function GroupPage() {
         {banModal && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md space-y-4">
-              <h3 className="font-bold text-lg">Ban {banModal.username}</h3>
-              <div className="space-y-2">
+              <h3 className="font-bold text-lg text-red-400">Ban {banModal.username}</h3>
+              <div className="space-y-1">
                 <label className="text-gray-400 text-sm">Duration</label>
-                <select
-                  value={banDuration}
-                  onChange={e => setBanDuration(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-4 py-3 outline-none"
-                >
+                <select value={banDuration} onChange={e => setBanDuration(e.target.value)} className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-4 py-3 outline-none">
                   <option value="1hour">1 Hour</option>
                   <option value="1day">1 Day</option>
                   <option value="3days">3 Days</option>
@@ -242,20 +271,64 @@ export default function GroupPage() {
                   <option value="permanent">Permanent</option>
                 </select>
               </div>
-              <div className="space-y-2">
-                <label className="text-gray-400 text-sm">Reason (optional)</label>
-                <input
-                  type="text"
-                  value={banReason}
-                  onChange={e => setBanReason(e.target.value)}
-                  placeholder="e.g. Spamming"
-                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-4 py-3 outline-none"
-                />
+              <div className="space-y-1">
+                <label className="text-gray-400 text-sm">Reason</label>
+                <input type="text" value={banReason} onChange={e => setBanReason(e.target.value)} placeholder="e.g. Spamming" className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-4 py-3 outline-none" />
               </div>
               <div className="flex gap-3">
                 <button onClick={() => setBanModal(null)} className="flex-1 bg-gray-800 text-white py-3 rounded-xl">Cancel</button>
                 <button onClick={banMember} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl">Ban</button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {muteModal && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md space-y-4">
+              <h3 className="font-bold text-lg text-yellow-400">Mute {muteModal.username}</h3>
+              <div className="space-y-1">
+                <label className="text-gray-400 text-sm">Duration</label>
+                <select value={muteDuration} onChange={e => setMuteDuration(e.target.value)} className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-4 py-3 outline-none">
+                  <option value="15mins">15 Minutes</option>
+                  <option value="1hour">1 Hour</option>
+                  <option value="6hours">6 Hours</option>
+                  <option value="1day">1 Day</option>
+                  <option value="1week">1 Week</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-gray-400 text-sm">Reason</label>
+                <input type="text" value={muteReason} onChange={e => setMuteReason(e.target.value)} placeholder="e.g. Spamming" className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-4 py-3 outline-none" />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setMuteModal(null)} className="flex-1 bg-gray-800 text-white py-3 rounded-xl">Cancel</button>
+                <button onClick={muteMember} className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 rounded-xl">Mute</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {transferModal && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md space-y-4">
+              <h3 className="font-bold text-lg">Transfer Ownership</h3>
+              <p className="text-gray-400 text-sm">Select a member to become the new admin. You will lose admin access.</p>
+              <div className="space-y-2">
+                {members.filter(m => m.user_id !== user?.id).map(m => (
+                  <button
+                    key={m.user_id}
+                    onClick={() => transferOwnership(m.user_id, m.username)}
+                    className="w-full flex items-center gap-3 bg-gray-800 hover:bg-gray-700 rounded-xl px-4 py-3 text-left transition-all"
+                  >
+                    <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-black font-bold text-sm">
+                      {m.username?.[0]?.toUpperCase()}
+                    </div>
+                    <span className="font-medium">{m.username}</span>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setTransferModal(false)} className="w-full bg-gray-800 text-white py-3 rounded-xl">Cancel</button>
             </div>
           </div>
         )}
@@ -273,44 +346,58 @@ export default function GroupPage() {
         {showSettings && (
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 space-y-5">
             <h3 className="font-bold text-lg">Group Settings</h3>
-
             <div className="bg-gray-800 rounded-xl px-4 py-3 flex items-center justify-between">
               <div>
                 <div className="text-gray-400 text-xs">Invite Code</div>
                 <div className="text-green-400 font-bold tracking-widest text-lg">{group.code}</div>
               </div>
-              <button
-                onClick={() => { navigator.clipboard.writeText(group.code); alert('Copied!') }}
-                className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded-lg"
-              >
-                Copy
-              </button>
+              <button onClick={() => { navigator.clipboard.writeText(group.code); alert('Copied!') }} className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded-lg">Copy</button>
             </div>
 
-            {isAdmin && activeBans.length > 0 && (
-              <div className="space-y-2">
-                <div className="text-gray-400 text-sm font-semibold">Banned Users ({activeBans.length})</div>
-                {activeBans.map(ban => (
-                  <div key={ban.user_id} className="flex items-center justify-between bg-red-950 rounded-xl px-4 py-3 border border-red-900">
-                    <div>
-                      <div className="text-sm font-medium text-red-300">{ban.user_id}</div>
-                      <div className="text-xs text-red-400">Until: {new Date(ban.banned_until).toLocaleDateString()} · {ban.reason}</div>
-                    </div>
-                    <button onClick={() => unbanMember(ban.user_id)} className="text-green-400 text-xs hover:text-green-300">Unban</button>
+            {isAdmin && (
+              <>
+                {activeBans.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-red-400 text-sm font-semibold">Banned ({activeBans.length})</div>
+                    {activeBans.map(ban => (
+                      <div key={ban.user_id} className="flex items-center justify-between bg-red-950 rounded-xl px-4 py-3 border border-red-900">
+                        <div>
+                          <div className="text-xs text-red-300">{ban.reason}</div>
+                          <div className="text-xs text-red-500">Until: {new Date(ban.banned_until).toLocaleDateString()}</div>
+                        </div>
+                        <button onClick={() => unbanMember(ban.user_id)} className="text-green-400 text-xs hover:text-green-300">Unban</button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+
+                {activeMutes.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-yellow-400 text-sm font-semibold">Muted ({activeMutes.length})</div>
+                    {activeMutes.map(mute => (
+                      <div key={mute.user_id} className="flex items-center justify-between bg-yellow-950 rounded-xl px-4 py-3 border border-yellow-900">
+                        <div>
+                          <div className="text-xs text-yellow-300">{mute.reason}</div>
+                          <div className="text-xs text-yellow-500">Until: {new Date(mute.muted_until).toLocaleTimeString()}</div>
+                        </div>
+                        <button onClick={() => unmuteMember(mute.user_id)} className="text-green-400 text-xs hover:text-green-300">Unmute</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button onClick={() => setTransferModal(true)} className="w-full bg-gray-800 hover:bg-gray-700 text-yellow-400 font-semibold py-3 rounded-xl transition-all">
+                  👑 Transfer Ownership
+                </button>
+                <button onClick={deleteGroup} className="w-full bg-red-950 hover:bg-red-900 text-red-400 font-semibold py-3 rounded-xl border border-red-900">
+                  🗑️ Delete Group
+                </button>
+              </>
             )}
 
             {!isAdmin && (
               <button onClick={leaveGroup} className="w-full bg-gray-800 hover:bg-gray-700 text-red-400 font-semibold py-3 rounded-xl">
                 Leave Group
-              </button>
-            )}
-
-            {isAdmin && (
-              <button onClick={deleteGroup} className="w-full bg-red-950 hover:bg-red-900 text-red-400 font-semibold py-3 rounded-xl border border-red-900">
-                🗑️ Delete Group Permanently
               </button>
             )}
           </div>
@@ -324,19 +411,14 @@ export default function GroupPage() {
           </div>
           <div className="flex items-center gap-2">
             {isAdmin && <span className="text-xs bg-yellow-900 text-yellow-400 px-2 py-1 rounded-full">👑 Admin</span>}
-            <span className="text-xs bg-gray-800 px-3 py-1 rounded-full text-gray-400">
-              {group.is_private ? '🔒' : '🌍'}
-            </span>
+            <span className="text-xs bg-gray-800 px-3 py-1 rounded-full text-gray-400">{group.is_private ? '🔒' : '🌍'}</span>
           </div>
         </div>
 
         <div className="flex bg-gray-900 rounded-xl p-1 gap-1">
           {(['leaderboard', 'chat', 'members'] as const).map(t => (
-            <button
-              key={t}
-              onClick={() => { setTab(t); if (t === 'chat') fetchMessages() }}
-              className={`flex-1 py-2 rounded-lg text-sm font-semibold capitalize transition-all ${tab === t ? 'bg-green-500 text-black' : 'text-gray-400 hover:text-white'}`}
-            >
+            <button key={t} onClick={() => { setTab(t); if (t === 'chat') fetchMessages() }}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${tab === t ? 'bg-green-500 text-black' : 'text-gray-400 hover:text-white'}`}>
               {t === 'leaderboard' ? '🏆 Leaderboard' : t === 'chat' ? '💬 Chat' : '👥 Members'}
             </button>
           ))}
@@ -352,9 +434,7 @@ export default function GroupPage() {
               const progress = Math.min((member.todayCalories / member.dailyTarget) * 100, 100)
               return (
                 <div key={member.user_id} className={`flex items-center gap-4 p-4 rounded-xl ${isMe ? 'bg-green-950 border border-green-800' : 'bg-gray-800'}`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${i === 0 ? 'bg-yellow-500 text-black' : i === 1 ? 'bg-gray-400 text-black' : i === 2 ? 'bg-orange-600 text-black' : 'bg-gray-700 text-gray-400'}`}>
-                    {i + 1}
-                  </div>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${i === 0 ? 'bg-yellow-500 text-black' : i === 1 ? 'bg-gray-400 text-black' : i === 2 ? 'bg-orange-600 text-black' : 'bg-gray-700 text-gray-400'}`}>{i + 1}</div>
                   <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-black font-bold flex-shrink-0">
                     {member.username?.[0]?.toUpperCase() || '?'}
                   </div>
@@ -363,6 +443,7 @@ export default function GroupPage() {
                       <span className="font-semibold">{member.username}</span>
                       {isMe && <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">You</span>}
                       {member.user_id === group.creator_id && <span className="text-xs bg-yellow-900 text-yellow-400 px-2 py-0.5 rounded-full">👑</span>}
+                      {activeMutes.find(m => m.user_id === member.user_id) && <span className="text-xs bg-yellow-950 text-yellow-500 px-2 py-0.5 rounded-full">🔇 Muted</span>}
                     </div>
                     <div className="w-full bg-gray-700 rounded-full h-1.5 mt-1">
                       <div className="bg-green-400 h-1.5 rounded-full" style={{ width: `${progress}%` }}></div>
@@ -384,6 +465,7 @@ export default function GroupPage() {
             <h3 className="font-semibold">All Members</h3>
             {members.map(member => {
               const isMe = member.user_id === user?.id
+              const isMuted = activeMutes.find(m => m.user_id === member.user_id)
               return (
                 <div key={member.user_id} className="flex items-center justify-between bg-gray-800 rounded-xl px-4 py-3">
                   <div className="flex items-center gap-3">
@@ -395,24 +477,20 @@ export default function GroupPage() {
                         {member.username}
                         {isMe && <span className="text-xs text-gray-500">(you)</span>}
                         {member.user_id === group.creator_id && <span className="text-xs bg-yellow-900 text-yellow-400 px-1.5 py-0.5 rounded-full">👑</span>}
+                        {isMuted && <span className="text-xs bg-yellow-950 text-yellow-500 px-1.5 py-0.5 rounded-full">🔇</span>}
                       </div>
                       <div className="text-gray-500 text-xs">{member.todayCalories} kcal today</div>
                     </div>
                   </div>
                   {isAdmin && !isMe && (
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => kickMember(member.user_id, member.username)}
-                        className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1 rounded-lg"
-                      >
-                        Kick
-                      </button>
-                      <button
-                        onClick={() => setBanModal(member)}
-                        className="text-xs bg-red-950 hover:bg-red-900 text-red-400 px-3 py-1 rounded-lg"
-                      >
-                        Ban
-                      </button>
+                      {isMuted ? (
+                        <button onClick={() => unmuteMember(member.user_id)} className="text-xs bg-yellow-950 text-yellow-400 px-3 py-1 rounded-lg">Unmute</button>
+                      ) : (
+                        <button onClick={() => setMuteModal(member)} className="text-xs bg-yellow-950 hover:bg-yellow-900 text-yellow-400 px-3 py-1 rounded-lg">Mute</button>
+                      )}
+                      <button onClick={() => kickMember(member.user_id, member.username)} className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1 rounded-lg">Kick</button>
+                      <button onClick={() => setBanModal(member)} className="text-xs bg-red-950 hover:bg-red-900 text-red-400 px-3 py-1 rounded-lg">Ban</button>
                     </div>
                   )}
                 </div>
@@ -423,14 +501,22 @@ export default function GroupPage() {
 
         {tab === 'chat' && (
           <div className="bg-gray-900 rounded-2xl overflow-hidden">
+            {pinnedMessages.length > 0 && (
+              <div className="border-b border-gray-800 bg-yellow-950/30 p-3">
+                <div className="text-yellow-400 text-xs font-semibold mb-1">📌 Pinned</div>
+                {pinnedMessages.map(msg => (
+                  <div key={msg.id} className="text-gray-300 text-sm">{msg.content}</div>
+                ))}
+              </div>
+            )}
             <div className="p-4 border-b border-gray-800">
               <h3 className="font-semibold">Group Chat</h3>
               <p className="text-gray-500 text-xs">Messages are automatically moderated</p>
             </div>
             <div className="h-96 overflow-y-auto p-4 space-y-3">
-              {messages.length === 0 ? (
+              {messages.filter(m => !m.is_pinned).length === 0 ? (
                 <div className="text-center py-10 text-gray-500 text-sm">No messages yet. Say hi!</div>
-              ) : messages.map(msg => {
+              ) : messages.filter(m => !m.is_pinned).map(msg => {
                 const isMe = msg.user_id === user?.id
                 const canDelete = isMe || isAdmin
                 return (
@@ -442,11 +528,8 @@ export default function GroupPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-gray-500">{msg.profile?.username || 'User'}</span>
                         <span className="text-xs text-gray-600">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        {canDelete && (
-                          <button onClick={() => deleteMessage(msg.id)} className="text-gray-600 hover:text-red-400 text-xs">
-                            {isAdmin && !isMe ? '🛡️' : '✕'}
-                          </button>
-                        )}
+                        {canDelete && <button onClick={() => deleteMessage(msg.id)} className="text-gray-600 hover:text-red-400 text-xs">{isAdmin && !isMe ? '🛡️' : '✕'}</button>}
+                        {isAdmin && <button onClick={() => pinMessage(msg.id, msg.is_pinned)} className="text-gray-600 hover:text-yellow-400 text-xs">📌</button>}
                       </div>
                       <div className={`px-4 py-2 rounded-2xl text-sm leading-relaxed ${isMe ? 'bg-green-500 text-black rounded-tr-sm' : 'bg-gray-800 text-white rounded-tl-sm'}`}>
                         {msg.content}
