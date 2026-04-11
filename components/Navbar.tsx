@@ -57,16 +57,14 @@ export default function Navbar() {
   if (!user || hiddenPaths.includes(pathname)) return null
 
   const links = [
-  { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
-  { href: '/library', label: 'Library', icon: '📚' },
-  { href: '/progress', label: 'Progress', icon: '📈' },
-  { href: '/workouts', label: 'Workouts', icon: '🏋️' },
-  { href: '/plan', label: 'Plan', icon: '📋' },
-  { href: '/social', label: 'Social', icon: '👥' },
-  { href: '/ai', label: 'AI Coach', icon: '🤖' },
-  { href: '/profile', label: 'Profile', icon: '👤' },
-]
-
+    { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
+    { href: '/library', label: 'Library', icon: '📚' },
+    { href: '/progress', label: 'Progress', icon: '📈' },
+    { href: '/workouts', label: 'Workouts', icon: '🏋️' },
+    { href: '/plan', label: 'Plan', icon: '📋' },
+    { href: '/social', label: 'Social', icon: '👥' },
+    { href: '/ai', label: 'AI Coach', icon: '🤖' },
+  ]
 
   return (
     <nav className="sticky top-0 z-50 bg-black/80 backdrop-blur-xl border-b border-white/10">
@@ -139,14 +137,17 @@ export default function Navbar() {
         </div>
 
         <div className="hidden md:flex items-center gap-3 flex-shrink-0">
-          <div className="flex items-center gap-2 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2">
+          <Link
+            href="/profile"
+            className="flex items-center gap-2 bg-gray-900 border border-gray-800 hover:border-green-700 rounded-xl px-3 py-2 transition-all"
+          >
             <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-black text-xs font-bold">
               {user?.user_metadata?.full_name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
             </div>
             <span className="text-white text-sm font-medium">
-              {user?.user_metadata?.full_name?.split(' ')[0] || 'User'}
+              {user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'User'}
             </span>
-          </div>
+          </Link>
           <button
             onClick={() => supabase.auth.signOut().then(() => router.push('/login'))}
             className="text-gray-400 hover:text-white text-sm border border-gray-800 hover:border-gray-600 px-3 py-2 rounded-lg transition-all"
@@ -190,6 +191,14 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
+          <Link
+            href="/profile"
+            onClick={() => setMenuOpen(false)}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+          >
+            <span>👤</span>
+            Profile
+          </Link>
           <button
             onClick={() => supabase.auth.signOut().then(() => router.push('/login'))}
             className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-950/50 transition-all"
