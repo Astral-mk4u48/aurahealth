@@ -240,9 +240,22 @@ export default function Profile() {
               </div>
             )}
             <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))}
-              className="w-full bg-gray-900 hover:bg-gray-800 text-red-400 font-semibold py-4 rounded-2xl transition-all border border-gray-800">
-              Sign Out
-            </button>
+  className="w-full bg-gray-900 hover:bg-gray-800 text-red-400 font-semibold py-4 rounded-2xl transition-all border border-gray-800">
+  Sign Out
+</button>
+<button
+  onClick={async () => {
+    if (!confirm('Are you sure? This will permanently delete your account and ALL your data. This cannot be undone.')) return
+    const res = await fetch('/api/delete-account', { method: 'DELETE' })
+    if (res.ok) {
+      await supabase.auth.signOut()
+      router.push('/login')
+    }
+  }}
+  className="w-full bg-red-950 hover:bg-red-900 text-red-400 font-semibold py-4 rounded-2xl transition-all border border-red-900 text-sm"
+>
+  Delete Account Permanently
+</button>
           </div>
         )}
 

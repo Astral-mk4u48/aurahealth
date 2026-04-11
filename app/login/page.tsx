@@ -187,6 +187,12 @@ router.push('/onboarding')
           </p>
         </div>
       </div>
+      <p className="text-center text-gray-600 text-xs mt-4">
+  By signing up you agree to our{' '}
+  <a href="/terms" className="text-gray-500 hover:text-white underline">Terms of Service</a>
+  {' '}and{' '}
+  <a href="/privacy" className="text-gray-500 hover:text-white underline">Privacy Policy</a>
+</p>
     </div>
   )
 }
