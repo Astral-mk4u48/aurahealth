@@ -182,17 +182,14 @@ router.push('/onboarding')
             Google
           </button>
 
-          <p className="text-center text-gray-600 text-xs">
-            By continuing you agree to our Terms of Service and Privacy Policy
-          </p>
-        </div>
-      </div>
-      <p className="text-center text-gray-600 text-xs mt-4">
+          <p className="text-center text-gray-600 text-xs mt-4">
   By signing up you agree to our{' '}
   <a href="/terms" className="text-gray-500 hover:text-white underline">Terms of Service</a>
   {' '}and{' '}
   <a href="/privacy" className="text-gray-500 hover:text-white underline">Privacy Policy</a>
 </p>
+        </div>
+      </div>
     </div>
   )
 }
