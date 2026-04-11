@@ -24,13 +24,19 @@ export default function Login() {
     setError('')
     setLoading(true)
     if (mode === 'signup') {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: username } }
-      })
-      if (error) { setError(error.message); setLoading(false); return }
-      router.push('/onboarding')
+      const { data, error } = await supabase.auth.signUp({
+  email,
+  password,
+  options: { data: { full_name: username } }
+})
+if (error) { setError(error.message); setLoading(false); return }
+if (data.user) {
+  await supabase.from('profiles').upsert({
+    id: data.user.id,
+    username: username || email.split('@')[0],
+  })
+}
+router.push('/onboarding')
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) { setError(error.message); setLoading(false); return }
