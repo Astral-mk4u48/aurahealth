@@ -1,21 +1,15 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 
-export async function DELETE() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
+export async function DELETE(request: Request) {
+  const authHeader = request.headers.get('Authorization')
+  const token = authHeader?.replace('Bearer ', '')
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-        },
-      },
-    }
+    { global: { headers: { Authorization: `Bearer ${token}` } } }
   )
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -32,6 +26,7 @@ export async function DELETE() {
   await adminSupabase.from('user_favorites').delete().eq('user_id', user.id)
   await adminSupabase.from('group_members').delete().eq('user_id', user.id)
   await adminSupabase.from('workout_plans').delete().eq('user_id', user.id)
+  await adminSupabase.from('group_messages').delete().eq('user_id', user.id)
   await adminSupabase.from('profiles').delete().eq('id', user.id)
   await adminSupabase.auth.admin.deleteUser(user.id)
 

@@ -96,9 +96,26 @@ export default function Profile() {
     setFavorites(prev => prev.filter(f => f.content_id !== contentId))
   }
 
-  const handleExport = () => {
-    window.location.href = '/api/export'
-  }
+  const handleExport = async () => {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return
+
+  const res = await fetch('/api/export', {
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`
+    }
+  })
+
+  if (!res.ok) { alert('Export failed. Please try again.'); return }
+
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'aurahealth-export.csv'
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -245,13 +262,19 @@ export default function Profile() {
 </button>
 <button
   onClick={async () => {
-    if (!confirm('Are you sure? This will permanently delete your account and ALL your data. This cannot be undone.')) return
-    const res = await fetch('/api/delete-account', { method: 'DELETE' })
-    if (res.ok) {
-      await supabase.auth.signOut()
-      router.push('/login')
-    }
-  }}
+  if (!confirm('Are you sure? This will permanently delete your account and ALL your data. This cannot be undone.')) return
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/api/delete-account', {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${session?.access_token}` }
+  })
+  if (res.ok) {
+    await supabase.auth.signOut()
+    router.push('/login')
+  } else {
+    alert('Failed to delete account. Please try again.')
+  }
+}}
   className="w-full bg-red-950 hover:bg-red-900 text-red-400 font-semibold py-4 rounded-2xl transition-all border border-red-900 text-sm"
 >
   Delete Account Permanently
