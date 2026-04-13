@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AuraHealth",
-  description: "Your AI-powered health companion",
+  title: "Rune Health",
+  description: "Your AI-powered personal health companion",
 };
 
 export default function RootLayout({

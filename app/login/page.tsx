@@ -57,7 +57,7 @@ router.push('/onboarding')
         <div className="absolute bottom-20 right-20 w-96 h-96 bg-emerald-500 rounded-full blur-3xl opacity-5"></div>
         <div className="relative z-10 max-w-md space-y-8">
           <div>
-            <h1 className="text-5xl font-bold bg-gradient-to-r from-green-400 to-emerald-600 bg-clip-text text-transparent">AuraHealth</h1>
+            <h1 className="text-5xl font-bold bg-gradient-to-r from-green-400 to-emerald-600 bg-clip-text text-transparent">Rune Health</h1>
             <p className="text-gray-400 mt-3 text-lg leading-relaxed">Your AI-powered personal health companion. Track smarter, not harder.</p>
           </div>
           <div className="space-y-4">
@@ -82,7 +82,7 @@ router.push('/onboarding')
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-md space-y-8">
           <div className="lg:hidden text-center">
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-green-400 to-emerald-600 bg-clip-text text-transparent">AuraHealth</h1>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-green-400 to-emerald-600 bg-clip-text text-transparent">Rune Health</h1>
           </div>
 
           <div>

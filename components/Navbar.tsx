@@ -70,7 +70,7 @@ export default function Navbar() {
     <nav className="sticky top-0 z-50 bg-black/80 backdrop-blur-xl border-b border-white/10">
       <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-4">
         <Link href="/dashboard" className="text-xl font-bold bg-gradient-to-r from-green-400 to-emerald-600 bg-clip-text text-transparent flex-shrink-0">
-          AuraHealth
+          Rune Health
         </Link>
 
         <div className="hidden md:flex items-center gap-1">

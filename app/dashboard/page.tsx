@@ -196,7 +196,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-green-400 to-emerald-600 bg-clip-text text-transparent">
-              AuraHealth
+               Rune Health
             </h1>
             <p className="text-gray-400 mt-1">{getGreeting()}</p>
           </div>

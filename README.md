@@ -1,8 +1,8 @@
-# AuraHealth
+# Rune Health
 
 **Copyright © 2026 Pavan Sankiliraj. All Rights Reserved.**
 
-This project and its source code are the intellectual property of Pavan Sankiliraj. 
+This project and its source code are the intellectual property of Pavan Sankiliraj.
 
 ## License
 
@@ -22,7 +22,7 @@ Any unauthorized use of this code is strictly prohibited and may result in legal
 
 ## About
 
-AuraHealth is an AI-powered personal health tracking web application built with:
+Rune Health is an AI-powered personal health tracking web application built with:
 - **Frontend:** Next.js 16, Tailwind CSS
 - **Backend:** Supabase (PostgreSQL)
 - **AI:** Google Gemini 2.5 Flash
@@ -31,15 +31,15 @@ AuraHealth is an AI-powered personal health tracking web application built with:
 
 ## Features
 
-- AI food logging — type anything in plain English
+- AI food logging
 - 400+ exercises with form guides and AI variations
 - 500+ recipes with ingredient swap AI
 - Personalized calorie and macro targets
 - Weekly AI-generated health reports
-- Google Fit / Pixel Watch integration
 - Workout tracker (strength + cardio)
 - Weight tracker with progress chart
 - AI health coach chat
-- And much more...
+- Social groups with leaderboards and chat
+- AI workout planner
 
 *Built by Pavan Sankiliraj — 2026*

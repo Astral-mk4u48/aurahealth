@@ -10,7 +10,7 @@ export default function Privacy() {
             <div className="w-10 h-10 bg-green-500/20 border border-green-500/50 rounded-xl flex items-center justify-center text-xl">🔒</div>
             <div>
               <h1 className="text-3xl font-bold">Privacy Policy</h1>
-              <p className="text-gray-500 text-sm">Effective April 11, 2026 · myaurahealth.vercel.app</p>
+              <p className="text-gray-500 text-sm">Effective April 11, 2026 · therunehealth.vercel.app</p>
             </div>
           </div>
         </div>
@@ -62,7 +62,7 @@ export default function Privacy() {
         </div>
 
         <div className="border-t border-gray-800 pt-6 flex items-center justify-between text-sm text-gray-600">
-          <span>© 2026 AuraHealth</span>
+          <span>© 2026 Rune Health</span>
           <Link href="/terms" className="hover:text-white transition-colors">Terms of Service →</Link>
         </div>
       </div>

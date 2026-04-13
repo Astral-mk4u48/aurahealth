@@ -17,7 +17,7 @@ export async function GET(request: Request) {
       code,
       client_id: process.env.GOOGLE_FIT_CLIENT_ID!,
       client_secret: process.env.GOOGLE_FIT_CLIENT_SECRET!,
-      redirect_uri: 'https://myaurahealth.vercel.app/api/google-fit/callback',
+      redirect_uri: 'https://therunehealth.vercel.app/api/google-fit/callback',
       grant_type: 'authorization_code',
     }),
   })
