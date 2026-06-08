@@ -6,8 +6,11 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
 
+  let response = NextResponse.redirect(new URL('/dashboard', request.url))
+
   if (code) {
     const cookieStore = await cookies()
+    
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -17,27 +20,29 @@ export async function GET(request: Request) {
             return cookieStore.getAll()
           },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
+            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+            
+            response = NextResponse.redirect(new URL('/dashboard', request.url))
+            cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
           },
         },
       }
     )
-    const { data: { user } } = await supabase.auth.exchangeCodeForSession(code)
 
-    if (user) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+    
+    if (!error && data?.user) {
       const { data: profile } = await supabase
         .from('profiles')
         .select('id')
-        .eq('id', user.id)
+        .eq('id', data.user.id)
         .single()
 
       if (!profile) {
-        return NextResponse.redirect(new URL('/onboarding', request.url))
+        response = NextResponse.redirect(new URL('/onboarding', request.url))
       }
     }
   }
 
-  return NextResponse.redirect(new URL('/dashboard', request.url))
+  return response
 }
