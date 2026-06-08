@@ -31,7 +31,15 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
     
-    if (!error && data?.user) {
+    if (error) {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        return NextResponse.redirect(new URL('/dashboard', request.url))
+      }
+      return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message)}`, request.url))
+    }
+
+    if (data?.user) {
       const { data: profile } = await supabase
         .from('profiles')
         .select('id')
